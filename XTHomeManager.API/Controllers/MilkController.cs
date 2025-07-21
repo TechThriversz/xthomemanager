@@ -1,12 +1,11 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using XTHomeManager.API.Data;
 using XTHomeManager.API.Models;
 
 namespace XTHomeManager.API.Controllers
 {
-    [Authorize]
     [Route("api/[controller]")]
     [ApiController]
     public class MilkController : ControllerBase
@@ -18,29 +17,60 @@ namespace XTHomeManager.API.Controllers
             _context = context;
         }
 
-        [HttpGet]
-        public async Task<IActionResult> GetMilkEntries()
+        [HttpGet("{recordId}")]
+        public async Task<ActionResult<IEnumerable<Milk>>> GetMilk(int recordId)
         {
-            var userId = User.FindFirst("AdminId")?.Value;
-            var isAdmin = User.IsInRole("Admin");
-            var entries = await _context.MilkEntries
-                .Where(e => e.AdminId == userId && (isAdmin || e.AllowViewerAccess))
-                .Select(e => new { e.Id, e.Date, e.QuantityLiters, e.Status, e.TotalCost })
-                .ToListAsync();
-            return Ok(entries);
+            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            var record = await _context.Records.FindAsync(recordId);
+            if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
+                return Unauthorized();
+
+            return await _context.Milk.Where(m => m.RecordId == recordId).ToListAsync();
         }
 
-        [Authorize(Roles = "Admin")]
         [HttpPost]
-        public async Task<IActionResult> CreateMilkEntry([FromBody] MilkEntry entry)
+        public async Task<ActionResult<Milk>> CreateMilk(Milk milk)
         {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
-            if (entry.Status != "Bought" && entry.Status != "Leave") return BadRequest("Invalid status");
+            var record = await _context.Records.FindAsync(milk.RecordId);
+            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
+            if (record == null || record.UserId != userId)
+                return Unauthorized();
 
-            entry.AdminId = User.FindFirst("AdminId")?.Value;
-            _context.MilkEntries.Add(entry);
+            var settings = await _context.Settings.FirstOrDefaultAsync(s => s.UserId == userId);
+            milk.RatePerLiter = settings?.MilkRatePerLiter ?? 200; // Default 200 Rs/liter
+            milk.AdminId = userId;
+            _context.Milk.Add(milk);
             await _context.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetMilkEntries), new { id = entry.Id }, entry);
+            return CreatedAtAction(nameof(GetMilk), new { recordId = milk.RecordId }, milk);
+        }
+
+        [HttpGet("analytics/{recordId}")]
+        public async Task<ActionResult> GetMilkAnalytics(int recordId, string month)
+        {
+            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            var record = await _context.Records.FindAsync(recordId);
+            if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
+                return Unauthorized();
+
+            var query = _context.Milk.Where(m => m.RecordId == recordId);
+            if (!string.IsNullOrEmpty(month))
+                query = query.Where(m => m.Date.ToString("yyyy-MM") == month);
+
+            var analytics = await query
+                .GroupBy(m => m.Date.ToString("yyyy-MM"))
+                .Select(g => new
+                {
+                    Month = g.Key,
+                    TotalQuantity = g.Sum(m => m.Status == "Bought" ? m.QuantityLiters : 0),
+                    TotalCost = g.Sum(m => m.Status == "Bought" ? m.QuantityLiters * m.RatePerLiter : 0),
+                    BoughtDays = g.Count(m => m.Status == "Bought"),
+                    LeaveDays = g.Count(m => m.Status == "Leave")
+                })
+                .ToListAsync();
+
+            return Ok(analytics);
         }
     }
 }

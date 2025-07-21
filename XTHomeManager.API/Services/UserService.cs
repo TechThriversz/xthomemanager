@@ -1,11 +1,11 @@
-﻿using XTHomeManager.API.Data;
-using XTHomeManager.API.Models;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using XTHomeManager.API.Data;
+using XTHomeManager.API.Models;
 
 namespace XTHomeManager.API.Services
 {
@@ -20,11 +20,12 @@ namespace XTHomeManager.API.Services
             _configuration = configuration;
         }
 
-        public async Task<User> RegisterAsync(string email, string password, string role = "Admin")
+        public async Task<User> RegisterAsync(string email, string fullName, string password, string role = "Admin")
         {
             var user = new User
             {
                 Email = email,
+                FullName = fullName,
                 PasswordHash = HashPassword(password),
                 Role = role
             };
@@ -37,22 +38,46 @@ namespace XTHomeManager.API.Services
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
             if (user == null || !VerifyPassword(password, user.PasswordHash))
+            {
+                Console.WriteLine($"Login failed for {email}: User not found or password mismatch");
                 return null;
+            }
             return user;
         }
 
-        public async Task<User> InviteViewerAsync(string email, string adminId)
+        public async Task<User> InviteViewerAsync(string email, string fullName, string adminId, string recordName, string recordType)
         {
             var user = new User
             {
                 Email = email,
+                FullName = fullName,
                 PasswordHash = HashPassword(GenerateRandomPassword()),
                 Role = "Viewer",
                 AdminId = adminId
             };
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
+
+            var record = await _context.Records.FirstOrDefaultAsync(r => r.Name == recordName && r.Type == recordType && r.UserId == adminId);
+            if (record != null)
+            {
+                record.ViewerId = user.Id;
+                record.AllowViewerAccess = true;
+                await _context.SaveChangesAsync();
+            }
+
             return user;
+        }
+
+        public async Task RevokeViewerAccessAsync(string viewerId, string recordName, string recordType)
+        {
+            var record = await _context.Records.FirstOrDefaultAsync(r => r.ViewerId == viewerId && r.Name == recordName && r.Type == recordType);
+            if (record != null)
+            {
+                record.ViewerId = null;
+                record.AllowViewerAccess = false;
+                await _context.SaveChangesAsync();
+            }
         }
 
         public string GenerateJwtToken(User user)
@@ -87,7 +112,9 @@ namespace XTHomeManager.API.Services
 
         private bool VerifyPassword(string password, string hash)
         {
-            return HashPassword(password) == hash;
+            var computedHash = HashPassword(password);
+            Console.WriteLine($"Input Password: {password}, Computed Hash: {computedHash}, Stored Hash: {hash}");
+            return computedHash == hash;
         }
 
         private string GenerateRandomPassword()

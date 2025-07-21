@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.OpenApi.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using XTHomeManager.API.Data;
@@ -8,6 +7,18 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add CORS policy to allow all origins
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", builder =>
+    {
+        builder.AllowAnyOrigin() // Allows all origins
+               .AllowAnyMethod()
+               .AllowAnyHeader();
+    });
+});
+
+// Add services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -37,11 +48,18 @@ builder.Services.AddAuthentication(options =>
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+// In app setup, before UseAuthentication
+app.UseCors("AllowAll");
+// Configure middleware
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "XTHomeManager API v1");
+    c.RoutePrefix = "swagger"; // Ensures Swagger UI is at /swagger/index.html
+});
+
+
+
 
 app.UseHttpsRedirection();
 app.UseAuthentication();

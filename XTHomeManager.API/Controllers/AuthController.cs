@@ -1,8 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using XTHomeManager.API.Data;
-using XTHomeManager.API.Services;
 using XTHomeManager.API.Models;
+using XTHomeManager.API.Services;
 
 namespace XTHomeManager.API.Controllers
 {
@@ -17,48 +16,44 @@ namespace XTHomeManager.API.Controllers
             _userService = userService;
         }
 
-        [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterModel model)
-        {
-            var user = await _userService.RegisterAsync(model.Email, model.Password);
-            if (user == null) return BadRequest("Registration failed");
-            return Ok();
-        }
-
         [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginModel model)
+        public async Task<ActionResult> Login([FromBody] LoginModel model)
         {
             var user = await _userService.LoginAsync(model.Email, model.Password);
-            if (user == null) return Unauthorized();
+            if (user == null)
+                return Unauthorized("Invalid email or password");
+
             var token = _userService.GenerateJwtToken(user);
-            return Ok(new { Token = token });
+            return Ok(new { Token = token, User = new { user.Email, user.Role, user.FullName, user.Id } });
         }
 
-        [Authorize(Roles = "Admin")]
+        [HttpPost("register")]
+        public async Task<ActionResult<User>> Register([FromBody] RegisterModel model)
+        {
+            var user = await _userService.RegisterAsync(model.Email, model.FullName, model.Password);
+            return Ok(user);
+        }
+
         [HttpPost("invite")]
-        public async Task<IActionResult> Invite([FromBody] InviteModel model)
+        public async Task<ActionResult<User>> Invite([FromBody] InviteModel model)
         {
             var adminId = User.FindFirst("AdminId")?.Value;
-            var user = await _userService.InviteViewerAsync(model.Email, adminId);
-            if (user == null) return BadRequest("Invite failed");
-            return Ok(new { Email = user.Email, TemporaryPassword = user.PasswordHash });
+            if (adminId == null)
+                return Unauthorized();
+
+            var user = await _userService.InviteViewerAsync(model.Email, model.FullName, adminId, model.RecordName, model.RecordType);
+            return Ok(user);
         }
-    }
 
-    public class RegisterModel
-    {
-        public string Email { get; set; }
-        public string Password { get; set; }
-    }
+        [HttpPost("revoke")]
+        public async Task<ActionResult> RevokeViewer([FromBody] RevokeModel model)
+        {
+            var adminId = User.FindFirst("AdminId")?.Value;
+            if (adminId == null)
+                return Unauthorized();
 
-    public class LoginModel
-    {
-        public string Email { get; set; }
-        public string Password { get; set; }
-    }
-
-    public class InviteModel
-    {
-        public string Email { get; set; }
+            await _userService.RevokeViewerAccessAsync(model.ViewerId, model.RecordName, model.RecordType);
+            return Ok();
+        }
     }
 }
