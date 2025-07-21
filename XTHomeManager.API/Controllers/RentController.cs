@@ -26,7 +26,7 @@ namespace XTHomeManager.API.Controllers
             if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
                 return Unauthorized();
 
-            return await _context.Rent.Where(r => r.RecordId == recordId).ToListAsync();
+            return await _context.RentEntries.Where(r => r.RecordId == recordId).ToListAsync();
         }
 
         [HttpPost]
@@ -38,7 +38,7 @@ namespace XTHomeManager.API.Controllers
                 return Unauthorized();
 
             rent.AdminId = userId;
-            _context.Rent.Add(rent);
+            _context.RentEntries.Add(rent);
             await _context.SaveChangesAsync();
             return CreatedAtAction(nameof(GetRent), new { recordId = rent.RecordId }, rent);
         }
@@ -52,7 +52,7 @@ namespace XTHomeManager.API.Controllers
             if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
                 return Unauthorized();
 
-            var query = _context.Rent.Where(r => r.RecordId == recordId);
+            var query = _context.RentEntries.Where(r => r.RecordId == recordId);
             if (!string.IsNullOrEmpty(month))
                 query = query.Where(r => r.Month == month);
 

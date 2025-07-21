@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using XTHomeManager.API.Data;
@@ -34,6 +35,17 @@ namespace XTHomeManager.API.Controllers
             _context.Records.Add(record);
             await _context.SaveChangesAsync();
             return CreatedAtAction(nameof(GetRecords), new { id = record.Id }, record);
+        }
+
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteRecord(string id)
+        {
+            var record = await _context.Records.FindAsync(id);
+            if (record == null) return NotFound();
+            _context.Records.Remove(record);
+            await _context.SaveChangesAsync();
+            return NoContent();
         }
     }
 }

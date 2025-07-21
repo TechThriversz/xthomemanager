@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using XTHomeManager.API.Data;
@@ -18,7 +19,7 @@ namespace XTHomeManager.API.Controllers
         }
 
         [HttpGet("{recordId}")]
-        public async Task<ActionResult<IEnumerable<Milk>>> GetMilk(int recordId)
+        public async Task<ActionResult<IEnumerable<MilkEntry>>> GetMilk(int recordId)
         {
             var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
             var role = User.FindFirst(ClaimTypes.Role)?.Value;
@@ -26,11 +27,11 @@ namespace XTHomeManager.API.Controllers
             if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
                 return Unauthorized();
 
-            return await _context.Milk.Where(m => m.RecordId == recordId).ToListAsync();
+            return await _context.MilkEntries.Where(m => m.RecordId == recordId).ToListAsync();
         }
 
         [HttpPost]
-        public async Task<ActionResult<Milk>> CreateMilk(Milk milk)
+        public async Task<ActionResult<MilkEntry>> CreateMilk(MilkEntry milk)
         {
             var record = await _context.Records.FindAsync(milk.RecordId);
             var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
@@ -40,7 +41,7 @@ namespace XTHomeManager.API.Controllers
             var settings = await _context.Settings.FirstOrDefaultAsync(s => s.UserId == userId);
             milk.RatePerLiter = settings?.MilkRatePerLiter ?? 200; // Default 200 Rs/liter
             milk.AdminId = userId;
-            _context.Milk.Add(milk);
+            _context.MilkEntries.Add(milk);
             await _context.SaveChangesAsync();
             return CreatedAtAction(nameof(GetMilk), new { recordId = milk.RecordId }, milk);
         }
@@ -54,7 +55,7 @@ namespace XTHomeManager.API.Controllers
             if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
                 return Unauthorized();
 
-            var query = _context.Milk.Where(m => m.RecordId == recordId);
+            var query = _context.MilkEntries.Where(m => m.RecordId == recordId);
             if (!string.IsNullOrEmpty(month))
                 query = query.Where(m => m.Date.ToString("yyyy-MM") == month);
 
@@ -71,6 +72,17 @@ namespace XTHomeManager.API.Controllers
                 .ToListAsync();
 
             return Ok(analytics);
+        }
+
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteMilk(string id)
+        {
+            var milk = await _context.MilkEntries.FindAsync(id);
+            if (milk == null) return NotFound();
+            _context.MilkEntries.Remove(milk);
+            await _context.SaveChangesAsync();
+            return NoContent();
         }
     }
 }

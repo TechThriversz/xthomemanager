@@ -1,11 +1,11 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+﻿using XTHomeManager.API.Data;
+using XTHomeManager.API.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using XTHomeManager.API.Data;
-using XTHomeManager.API.Models;
 
 namespace XTHomeManager.API.Services
 {
@@ -24,10 +24,10 @@ namespace XTHomeManager.API.Services
         {
             var user = new User
             {
-                Email = email,
-                FullName = fullName,
+                Email = email ?? throw new ArgumentNullException(nameof(email)),
+                FullName = fullName ?? throw new ArgumentNullException(nameof(fullName)),
                 PasswordHash = HashPassword(password),
-                Role = role
+                Role = role ?? "Admin"
             };
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
@@ -36,21 +36,39 @@ namespace XTHomeManager.API.Services
 
         public async Task<User> LoginAsync(string email, string password)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
-            if (user == null || !VerifyPassword(password, user.PasswordHash))
+            try
             {
-                Console.WriteLine($"Login failed for {email}: User not found or password mismatch");
+                var user = await _context.Users
+                    .Where(u => u.Email == email)
+                    .FirstOrDefaultAsync();
+
+                if (user == null)
+                {
+                    Console.WriteLine($"Login failed for {email}: User not found");
+                    return null;
+                }
+
+                if (string.IsNullOrEmpty(user.PasswordHash) || !VerifyPassword(password, user.PasswordHash))
+                {
+                    Console.WriteLine($"Login failed for {email}: Password mismatch or PasswordHash is null");
+                    return null;
+                }
+
+                return user;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Login failed for {email}: {ex.Message}");
                 return null;
             }
-            return user;
         }
 
-        public async Task<User> InviteViewerAsync(string email, string fullName, string adminId, string recordName, string recordType)
+        public async Task<User> InviteViewerAsync(string email, string fullName, string adminId, string recordName)
         {
             var user = new User
             {
-                Email = email,
-                FullName = fullName,
+                Email = email ?? throw new ArgumentNullException(nameof(email)),
+                FullName = fullName ?? throw new ArgumentNullException(nameof(fullName)),
                 PasswordHash = HashPassword(GenerateRandomPassword()),
                 Role = "Viewer",
                 AdminId = adminId
@@ -58,7 +76,7 @@ namespace XTHomeManager.API.Services
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            var record = await _context.Records.FirstOrDefaultAsync(r => r.Name == recordName && r.Type == recordType && r.UserId == adminId);
+            var record = await _context.Records.FirstOrDefaultAsync(r => r.Name == recordName && r.UserId == adminId);
             if (record != null)
             {
                 record.ViewerId = user.Id;

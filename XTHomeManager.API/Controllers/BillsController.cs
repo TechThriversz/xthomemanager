@@ -26,7 +26,7 @@ namespace XTHomeManager.API.Controllers
             if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
                 return Unauthorized();
 
-            return await _context.Bills.Where(b => b.RecordId == recordId).ToListAsync();
+            return await _context.ElectricityBills.Where(b => b.RecordId == recordId).ToListAsync();
         }
 
         [HttpPost]
@@ -38,7 +38,7 @@ namespace XTHomeManager.API.Controllers
                 return Unauthorized();
 
             bill.AdminId = userId;
-            _context.Bills.Add(bill);
+            _context.ElectricityBills.Add(bill);
             await _context.SaveChangesAsync();
             return CreatedAtAction(nameof(GetBills), new { recordId = bill.RecordId }, bill);
         }
@@ -52,7 +52,7 @@ namespace XTHomeManager.API.Controllers
             if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
                 return Unauthorized();
 
-            var query = _context.Bills.Where(b => b.RecordId == recordId);
+            var query = _context.ElectricityBills.Where(b => b.RecordId == recordId);
             if (!string.IsNullOrEmpty(month))
                 query = query.Where(b => b.Month == month);
 
