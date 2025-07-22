@@ -21,10 +21,24 @@ namespace XTHomeManager.API.Controllers
         {
             var user = await _userService.LoginAsync(model.Email, model.Password);
             if (user == null)
+            {
+                Console.WriteLine($"Login failed: Invalid email or password for {model.Email}");
                 return Unauthorized("Invalid email or password");
+            }
 
             var token = _userService.GenerateJwtToken(user);
-            return Ok(new { Token = token, User = new { user.Email, user.Role, user.FullName, user.Id } });
+            Console.WriteLine($"Login successful: User ID {user.Id}, Role {user.Role}");
+            return Ok(new
+            {
+                Token = token,
+                User = new
+                {
+                    user.Id,
+                    user.Email,
+                    user.Role,
+                    user.FullName
+                }
+            });
         }
 
         [HttpPost("register")]
@@ -39,9 +53,12 @@ namespace XTHomeManager.API.Controllers
         {
             var adminId = User.FindFirst("AdminId")?.Value;
             if (adminId == null)
+            {
+                Console.WriteLine("Invite: No AdminId in JWT");
                 return Unauthorized();
+            }
 
-            var user = await _userService.InviteViewerAsync(model.Email, model.FullName, adminId, model.RecordName, model.RecordType);
+            var user = await _userService.InviteViewerAsync(model.Email, model.FullName, adminId, model.RecordName);
             return Ok(user);
         }
 
@@ -50,7 +67,10 @@ namespace XTHomeManager.API.Controllers
         {
             var adminId = User.FindFirst("AdminId")?.Value;
             if (adminId == null)
+            {
+                Console.WriteLine("Revoke: No AdminId in JWT");
                 return Unauthorized();
+            }
 
             await _userService.RevokeViewerAccessAsync(model.ViewerId, model.RecordName, model.RecordType);
             return Ok();

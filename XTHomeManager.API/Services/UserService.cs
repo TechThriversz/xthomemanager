@@ -1,11 +1,11 @@
-﻿using XTHomeManager.API.Data;
-using XTHomeManager.API.Models;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using XTHomeManager.API.Data;
+using XTHomeManager.API.Models;
 
 namespace XTHomeManager.API.Services
 {
@@ -102,6 +102,7 @@ namespace XTHomeManager.API.Services
         {
             var claims = new List<Claim>
             {
+                new Claim("id", user.Id), // Ensure 'id' claim is included
                 new Claim(JwtRegisteredClaimNames.Sub, user.Email),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
                 new Claim(ClaimTypes.Role, user.Role),
@@ -121,7 +122,7 @@ namespace XTHomeManager.API.Services
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        private string HashPassword(string password)
+        internal string HashPassword(string password)
         {
             using var sha256 = SHA256.Create();
             var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));

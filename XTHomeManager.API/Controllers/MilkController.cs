@@ -1,11 +1,10 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 using XTHomeManager.API.Data;
 using XTHomeManager.API.Models;
 
-namespace XTHomeManager.API.Controllers
+namespace XTHomeManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
@@ -19,70 +18,59 @@ namespace XTHomeManager.API.Controllers
         }
 
         [HttpGet("{recordId}")]
-        public async Task<ActionResult<IEnumerable<MilkEntry>>> GetMilk(int recordId)
+        [Authorize]
+        public async Task<ActionResult<IEnumerable<MilkEntry>>> GetMilk(string recordId)
         {
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            var record = await _context.Records.FindAsync(recordId);
-            if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
-                return Unauthorized();
-
-            return await _context.MilkEntries.Where(m => m.RecordId == recordId).ToListAsync();
+            if (!int.TryParse(recordId, out var parsedRecordId))
+                return BadRequest("Record ID must be a valid integer");
+            if (!await _context.Records.AnyAsync(r => r.Id == parsedRecordId))
+                return BadRequest("Invalid Record ID");
+            return await _context.MilkEntries.Where(m => m.RecordId == parsedRecordId).ToListAsync();
         }
 
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<MilkEntry>> CreateMilk(MilkEntry milk)
         {
-            var record = await _context.Records.FindAsync(milk.RecordId);
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
-            if (record == null || record.UserId != userId)
-                return Unauthorized();
-
-            var settings = await _context.Settings.FirstOrDefaultAsync(s => s.UserId == userId);
-            milk.RatePerLiter = settings?.MilkRatePerLiter ?? 200; // Default 200 Rs/liter
-            milk.AdminId = userId;
-            _context.MilkEntries.Add(milk);
+            if (!await _context.Records.AnyAsync(r => r.Id == milk.RecordId))
+                return BadRequest("Invalid Record ID");
+            milk.AdminId = User.FindFirst("id")?.Value ?? throw new UnauthorizedAccessException("Admin ID not found");
+            _context.MilkEntries.Add(milk); // Id is auto-incremented
             await _context.SaveChangesAsync();
             return CreatedAtAction(nameof(GetMilk), new { recordId = milk.RecordId }, milk);
-        }
-
-        [HttpGet("analytics/{recordId}")]
-        public async Task<ActionResult> GetMilkAnalytics(int recordId, string month)
-        {
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            var record = await _context.Records.FindAsync(recordId);
-            if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
-                return Unauthorized();
-
-            var query = _context.MilkEntries.Where(m => m.RecordId == recordId);
-            if (!string.IsNullOrEmpty(month))
-                query = query.Where(m => m.Date.ToString("yyyy-MM") == month);
-
-            var analytics = await query
-                .GroupBy(m => m.Date.ToString("yyyy-MM"))
-                .Select(g => new
-                {
-                    Month = g.Key,
-                    TotalQuantity = g.Sum(m => m.Status == "Bought" ? m.QuantityLiters : 0),
-                    TotalCost = g.Sum(m => m.Status == "Bought" ? m.QuantityLiters * m.RatePerLiter : 0),
-                    BoughtDays = g.Count(m => m.Status == "Bought"),
-                    LeaveDays = g.Count(m => m.Status == "Leave")
-                })
-                .ToListAsync();
-
-            return Ok(analytics);
         }
 
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteMilk(string id)
         {
-            var milk = await _context.MilkEntries.FindAsync(id);
-            if (milk == null) return NotFound();
+            if (!int.TryParse(id, out var parsedId))
+                return BadRequest("Milk ID must be a valid integer");
+            var milk = await _context.MilkEntries.FindAsync(parsedId);
+            if (milk == null) return NotFound("Milk entry not found");
             _context.MilkEntries.Remove(milk);
             await _context.SaveChangesAsync();
             return NoContent();
+        }
+
+        [HttpGet("analytics/{recordId}")]
+        [Authorize]
+        public async Task<ActionResult<object>> GetMilkAnalytics(string recordId, [FromQuery] string? month)
+        {
+            if (!int.TryParse(recordId, out var parsedRecordId))
+                return BadRequest("Record ID must be a valid integer");
+            if (!await _context.Records.AnyAsync(r => r.Id == parsedRecordId))
+                return BadRequest("Invalid Record ID");
+            var query = _context.MilkEntries.Where(m => m.RecordId == parsedRecordId && m.Status != "Leave");
+            if (!string.IsNullOrEmpty(month))
+            {
+                if (!DateTime.TryParse($"{month}-01", out var monthDate))
+                    return BadRequest("Invalid month format, use yyyy-MM");
+                query = query.Where(m => m.Date.Year == monthDate.Year && m.Date.Month == monthDate.Month);
+            }
+            var totalQuantity = await query.SumAsync(m => m.QuantityLiters);
+            var totalCost = await query.SumAsync(m => m.TotalCost);
+            return new { recordId = parsedRecordId, totalQuantity, totalCost };
         }
     }
 }

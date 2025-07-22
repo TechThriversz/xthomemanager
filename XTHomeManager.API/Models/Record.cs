@@ -1,13 +1,27 @@
-﻿namespace XTHomeManager.API.Models
+﻿using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
+
+namespace XTHomeManager.API.Models
 {
     public class Record
     {
         public int Id { get; set; }
-        public string Name { get; set; } // e.g., "Lahore Milk"
-        public string Type { get; set; } // "Milk", "Bill", "Rent"
-        public string UserId { get; set; } // Admin who created
-        public string? ViewerId { get; set; } // Viewer with access
-        public bool AllowViewerAccess { get; set; } // Permission for Viewers
-        public User User { get; set; } // Navigation property for FullName
+
+        [Required]
+        [StringLength(100)]
+        public string Name { get; set; }
+
+        [Required]
+        public string Type { get; set; }
+
+        [Required]
+        public string UserId { get; set; }
+
+        public string? ViewerId { get; set; }
+
+        public bool AllowViewerAccess { get; set; }
+
+        [JsonIgnore] // Exclude User from JSON serialization
+        public User? User { get; set; }
     }
 }

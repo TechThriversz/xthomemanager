@@ -1,10 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 using XTHomeManager.API.Data;
 using XTHomeManager.API.Models;
 
-namespace XTHomeManager.API.Controllers
+namespace XTHomeManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
@@ -18,55 +18,75 @@ namespace XTHomeManager.API.Controllers
         }
 
         [HttpGet("{recordId}")]
-        public async Task<ActionResult<IEnumerable<ElectricityBill>>> GetBills(int recordId)
+        [Authorize]
+        public async Task<ActionResult<IEnumerable<ElectricityBill>>> GetBills(string recordId)
         {
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            var record = await _context.Records.FindAsync(recordId);
-            if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
-                return Unauthorized();
-
-            return await _context.ElectricityBills.Where(b => b.RecordId == recordId).ToListAsync();
+            if (!int.TryParse(recordId, out var parsedRecordId))
+                return BadRequest("Record ID must be a valid integer");
+            if (!await _context.Records.AnyAsync(r => r.Id == parsedRecordId))
+                return BadRequest("Invalid Record ID");
+            return await _context.ElectricityBills.Where(b => b.RecordId == parsedRecordId).ToListAsync();
         }
 
         [HttpPost]
-        public async Task<ActionResult<ElectricityBill>> CreateBill(ElectricityBill bill)
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<ElectricityBill>> CreateBill([FromForm] ElectricityBill bill, [FromForm] IFormFile? file)
         {
-            var record = await _context.Records.FindAsync(bill.RecordId);
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
-            if (record == null || record.UserId != userId)
-                return Unauthorized();
-
-            bill.AdminId = userId;
-            _context.ElectricityBills.Add(bill);
+            if (!await _context.Records.AnyAsync(r => r.Id == bill.RecordId))
+                return BadRequest("Invalid Record ID");
+            if (file != null)
+            {
+                if (file.Length > 5 * 1024 * 1024 || !new[] { ".jpg", ".jpeg", ".png", ".pdf" }.Contains(Path.GetExtension(file.FileName).ToLower()))
+                    return BadRequest("Invalid file: max 5MB, only .jpg, .jpeg, .png, .pdf allowed");
+                var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "Uploads");
+                if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
+                var filePath = Path.Combine(uploadsDir, $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}");
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+                bill.FilePath = filePath;
+            }
+            bill.AdminId = User.FindFirst("id")?.Value ?? throw new UnauthorizedAccessException("Admin ID not found");
+            _context.ElectricityBills.Add(bill); // Id is auto-incremented by EF Core
             await _context.SaveChangesAsync();
             return CreatedAtAction(nameof(GetBills), new { recordId = bill.RecordId }, bill);
         }
 
-        [HttpGet("analytics/{recordId}")]
-        public async Task<ActionResult> GetBillsAnalytics(int recordId, string month)
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteBill(string id)
         {
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            var record = await _context.Records.FindAsync(recordId);
-            if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
-                return Unauthorized();
+            if (!int.TryParse(id, out var parsedId))
+                return BadRequest("Bill ID must be a valid integer");
+            var bill = await _context.ElectricityBills.FindAsync(parsedId);
+            if (bill == null) return NotFound("Bill not found");
+            if (!string.IsNullOrEmpty(bill.FilePath) && System.IO.File.Exists(bill.FilePath))
+            {
+                System.IO.File.Delete(bill.FilePath);
+            }
+            _context.ElectricityBills.Remove(bill);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
 
-            var query = _context.ElectricityBills.Where(b => b.RecordId == recordId);
+        [HttpGet("analytics/{recordId}")]
+        [Authorize]
+        public async Task<ActionResult<object>> GetBillsAnalytics(string recordId, [FromQuery] string? month)
+        {
+            if (!int.TryParse(recordId, out var parsedRecordId))
+                return BadRequest("Record ID must be a valid integer");
+            if (!await _context.Records.AnyAsync(r => r.Id == parsedRecordId))
+                return BadRequest("Invalid Record ID");
+            var query = _context.ElectricityBills.Where(b => b.RecordId == parsedRecordId);
             if (!string.IsNullOrEmpty(month))
+            {
+                if (!DateTime.TryParse($"{month}-01", out var monthDate))
+                    return BadRequest("Invalid month format, use yyyy-MM");
                 query = query.Where(b => b.Month == month);
-
-            var analytics = await query
-                .GroupBy(b => b.Month)
-                .Select(g => new
-                {
-                    Month = g.Key,
-                    TotalAmount = g.Sum(b => b.Amount),
-                    BillCount = g.Count()
-                })
-                .ToListAsync();
-
-            return Ok(analytics);
+            }
+            var totalAmount = await query.SumAsync(b => b.Amount);
+            return new { recordId = parsedRecordId, totalAmount };
         }
     }
 }

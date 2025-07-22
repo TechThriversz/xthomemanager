@@ -1,10 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 using XTHomeManager.API.Data;
 using XTHomeManager.API.Models;
 
-namespace XTHomeManager.API.Controllers
+namespace XTHomeManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
@@ -18,55 +18,58 @@ namespace XTHomeManager.API.Controllers
         }
 
         [HttpGet("{recordId}")]
-        public async Task<ActionResult<IEnumerable<RentEntry>>> GetRent(int recordId)
+        [Authorize]
+        public async Task<ActionResult<IEnumerable<RentEntry>>> GetRent(string recordId)
         {
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            var record = await _context.Records.FindAsync(recordId);
-            if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
-                return Unauthorized();
-
-            return await _context.RentEntries.Where(r => r.RecordId == recordId).ToListAsync();
+            if (!int.TryParse(recordId, out var parsedRecordId))
+                return BadRequest("Record ID must be a valid integer");
+            if (!await _context.Records.AnyAsync(r => r.Id == parsedRecordId))
+                return BadRequest("Invalid Record ID");
+            return await _context.RentEntries.Where(r => r.RecordId == parsedRecordId).ToListAsync();
         }
 
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<RentEntry>> CreateRent(RentEntry rent)
         {
-            var record = await _context.Records.FindAsync(rent.RecordId);
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
-            if (record == null || record.UserId != userId)
-                return Unauthorized();
-
-            rent.AdminId = userId;
-            _context.RentEntries.Add(rent);
+            if (!await _context.Records.AnyAsync(r => r.Id == rent.RecordId))
+                return BadRequest("Invalid Record ID");
+            rent.AdminId = User.FindFirst("id")?.Value ?? throw new UnauthorizedAccessException("Admin ID not found");
+            _context.RentEntries.Add(rent); // Id is auto-incremented
             await _context.SaveChangesAsync();
             return CreatedAtAction(nameof(GetRent), new { recordId = rent.RecordId }, rent);
         }
 
-        [HttpGet("analytics/{recordId}")]
-        public async Task<ActionResult> GetRentAnalytics(int recordId, string month)
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteRent(string id)
         {
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            var record = await _context.Records.FindAsync(recordId);
-            if (record == null || (!record.AllowViewerAccess && role == "Viewer" && record.ViewerId != userId) || (role == "Admin" && record.UserId != userId))
-                return Unauthorized();
+            if (!int.TryParse(id, out var parsedId))
+                return BadRequest("Rent ID must be a valid integer");
+            var rent = await _context.RentEntries.FindAsync(parsedId);
+            if (rent == null) return NotFound("Rent entry not found");
+            _context.RentEntries.Remove(rent);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
 
-            var query = _context.RentEntries.Where(r => r.RecordId == recordId);
+        [HttpGet("analytics/{recordId}")]
+        [Authorize]
+        public async Task<ActionResult<object>> GetRentAnalytics(string recordId, [FromQuery] string? month)
+        {
+            if (!int.TryParse(recordId, out var parsedRecordId))
+                return BadRequest("Record ID must be a valid integer");
+            if (!await _context.Records.AnyAsync(r => r.Id == parsedRecordId))
+                return BadRequest("Invalid Record ID");
+            var query = _context.RentEntries.Where(r => r.RecordId == parsedRecordId);
             if (!string.IsNullOrEmpty(month))
+            {
+                if (!DateTime.TryParse($"{month}-01", out var monthDate))
+                    return BadRequest("Invalid month format, use yyyy-MM");
                 query = query.Where(r => r.Month == month);
-
-            var analytics = await query
-                .GroupBy(r => r.Month)
-                .Select(g => new
-                {
-                    Month = g.Key,
-                    TotalAmount = g.Sum(r => r.Amount),
-                    RentCount = g.Count()
-                })
-                .ToListAsync();
-
-            return Ok(analytics);
+            }
+            var totalAmount = await query.SumAsync(r => r.Amount);
+            return new { recordId = parsedRecordId, totalAmount };
         }
     }
 }
