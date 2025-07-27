@@ -36,7 +36,8 @@ namespace XTHomeManager.API.Controllers
                     user.Id,
                     user.Email,
                     user.Role,
-                    user.FullName
+                    user.FullName,
+                    user.ImagePath // Add ImagePath to the response
                 }
             });
         }

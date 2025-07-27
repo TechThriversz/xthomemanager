@@ -3,8 +3,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using XTHomeManager.API.Data;
 using XTHomeManager.API.Models;
+using System;
+using System.IO;
+using System.Threading.Tasks;
 
-namespace XTHomeManager.Controllers
+namespace XTHomeManager.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
@@ -19,74 +22,104 @@ namespace XTHomeManager.Controllers
 
         [HttpGet("{recordId}")]
         [Authorize]
-        public async Task<ActionResult<IEnumerable<ElectricityBill>>> GetBills(string recordId)
+        public async Task<ActionResult<IEnumerable<ElectricityBill>>> GetBills(int recordId)
         {
-            if (!int.TryParse(recordId, out var parsedRecordId))
-                return BadRequest("Record ID must be a valid integer");
-            if (!await _context.Records.AnyAsync(r => r.Id == parsedRecordId))
-                return BadRequest("Invalid Record ID");
-            return await _context.ElectricityBills.Where(b => b.RecordId == parsedRecordId).ToListAsync();
+            try
+            {
+                Console.WriteLine($"GetBills: Fetching bills for recordId: {recordId}");
+                if (!await _context.Records.AnyAsync(r => r.Id == recordId))
+                {
+                    Console.WriteLine($"GetBills: Invalid Record ID - {recordId}");
+                    return BadRequest("Invalid Record ID");
+                }
+                var entries = await _context.ElectricityBills
+                    .Where(b => b.RecordId == recordId)
+                    .ToListAsync();
+                return Ok(entries ?? new List<ElectricityBill>());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GetBills: Error - {ex.Message}, StackTrace: {ex.StackTrace}");
+                return StatusCode(500, "An error occurred while fetching bills: " + ex.Message);
+            }
         }
 
         [HttpPost]
         [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<ElectricityBill>> CreateBill([FromForm] ElectricityBill bill, [FromForm] IFormFile? file)
+        public async Task<ActionResult<ElectricityBill>> CreateBill([FromForm] ElectricityBill entry)
         {
-            if (!await _context.Records.AnyAsync(r => r.Id == bill.RecordId))
-                return BadRequest("Invalid Record ID");
-            if (file != null)
+            try
             {
-                if (file.Length > 5 * 1024 * 1024 || !new[] { ".jpg", ".jpeg", ".png", ".pdf" }.Contains(Path.GetExtension(file.FileName).ToLower()))
-                    return BadRequest("Invalid file: max 5MB, only .jpg, .jpeg, .png, .pdf allowed");
-                var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "Uploads");
-                if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
-                var filePath = Path.Combine(uploadsDir, $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}");
-                using (var stream = new FileStream(filePath, FileMode.Create))
+                Console.WriteLine($"CreateBill: Received payload - RecordId: {entry.RecordId}, Month: {entry.Month}, Amount: {entry.Amount}, ReferenceNumber: {entry.ReferenceNumber}, AdminId: {entry.AdminId}");
+                if (!await _context.Records.AnyAsync(r => r.Id == entry.RecordId))
                 {
-                    await file.CopyToAsync(stream);
+                    Console.WriteLine($"CreateBill: Invalid Record ID - {entry.RecordId}");
+                    return BadRequest("Invalid Record ID");
                 }
-                bill.FilePath = filePath;
+                if (string.IsNullOrEmpty(entry.Month) || !DateTime.TryParse($"{entry.Month}-01", out _))
+                {
+                    Console.WriteLine($"CreateBill: Invalid Month - {entry.Month}");
+                    return BadRequest("Month must be in YYYY-MM format");
+                }
+                if (string.IsNullOrEmpty(entry.ReferenceNumber))
+                {
+                    Console.WriteLine($"CreateBill: ReferenceNumber is empty");
+                    return BadRequest("Reference Number is required");
+                }
+                if (entry.Amount <= 0)
+                {
+                    Console.WriteLine($"CreateBill: Invalid Amount - {entry.Amount}");
+                    return BadRequest("Amount must be greater than 0");
+                }
+                if (entry.FilePath != null)
+                {
+                    var filePath = Path.Combine("uploads", $"{Guid.NewGuid()}{Path.GetExtension(entry.FilePath)}");
+                    Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                    entry.FilePath = filePath;
+                }
+
+                var authUserId = User.FindFirst("id")?.Value;
+                if (authUserId != entry.AdminId)
+                {
+                    Console.WriteLine($"CreateBill: Admin ID mismatch - JWT ID: {authUserId}, Payload ID: {entry.AdminId}");
+                    return BadRequest("Admin ID must match authenticated user");
+                }
+
+                _context.ElectricityBills.Add(entry);
+                await _context.SaveChangesAsync();
+                Console.WriteLine($"CreateBill: Successfully created bill ID: {entry.Id}");
+                return CreatedAtAction(nameof(GetBills), new { recordId = entry.RecordId }, entry);
             }
-            bill.AdminId = User.FindFirst("id")?.Value ?? throw new UnauthorizedAccessException("Admin ID not found");
-            _context.ElectricityBills.Add(bill); // Id is auto-incremented by EF Core
-            await _context.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetBills), new { recordId = bill.RecordId }, bill);
+            catch (Exception ex)
+            {
+                Console.WriteLine($"CreateBill: Error - {ex.Message}, StackTrace: {ex.StackTrace}");
+                return StatusCode(500, "An error occurred while creating the bill entry");
+            }
         }
 
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> DeleteBill(string id)
+        public async Task<IActionResult> DeleteBill(int id)
         {
-            if (!int.TryParse(id, out var parsedId))
-                return BadRequest("Bill ID must be a valid integer");
-            var bill = await _context.ElectricityBills.FindAsync(parsedId);
-            if (bill == null) return NotFound("Bill not found");
-            if (!string.IsNullOrEmpty(bill.FilePath) && System.IO.File.Exists(bill.FilePath))
+            try
             {
-                System.IO.File.Delete(bill.FilePath);
+                Console.WriteLine($"DeleteBill: Attempting to delete bill ID: {id}");
+                var bill = await _context.ElectricityBills.FindAsync(id);
+                if (bill == null)
+                {
+                    Console.WriteLine($"DeleteBill: Bill not found - ID: {id}");
+                    return NotFound("Bill entry not found");
+                }
+                _context.ElectricityBills.Remove(bill);
+                await _context.SaveChangesAsync();
+                Console.WriteLine($"DeleteBill: Successfully deleted bill ID: {id}");
+                return NoContent();
             }
-            _context.ElectricityBills.Remove(bill);
-            await _context.SaveChangesAsync();
-            return NoContent();
-        }
-
-        [HttpGet("analytics/{recordId}")]
-        [Authorize]
-        public async Task<ActionResult<object>> GetBillsAnalytics(string recordId, [FromQuery] string? month)
-        {
-            if (!int.TryParse(recordId, out var parsedRecordId))
-                return BadRequest("Record ID must be a valid integer");
-            if (!await _context.Records.AnyAsync(r => r.Id == parsedRecordId))
-                return BadRequest("Invalid Record ID");
-            var query = _context.ElectricityBills.Where(b => b.RecordId == parsedRecordId);
-            if (!string.IsNullOrEmpty(month))
+            catch (Exception ex)
             {
-                if (!DateTime.TryParse($"{month}-01", out var monthDate))
-                    return BadRequest("Invalid month format, use yyyy-MM");
-                query = query.Where(b => b.Month == month);
+                Console.WriteLine($"DeleteBill: Error - {ex.Message}, StackTrace: {ex.StackTrace}");
+                return StatusCode(500, "An error occurred while deleting the bill entry");
             }
-            var totalAmount = await query.SumAsync(b => b.Amount);
-            return new { recordId = parsedRecordId, totalAmount };
         }
     }
 }

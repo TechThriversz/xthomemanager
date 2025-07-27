@@ -32,19 +32,27 @@ namespace XTHomeManager.API.Data
             modelBuilder.Entity<Record>().Property(r => r.ViewerId).IsRequired(false).HasMaxLength(450);
 
             // MilkEntry configuration
-            modelBuilder.Entity<MilkEntry>().Property(m => m.Status).IsRequired().HasMaxLength(50);
+            modelBuilder.Entity<MilkEntry>().Property(m => m.Status).IsRequired(false).HasMaxLength(50);
             modelBuilder.Entity<MilkEntry>().Property(m => m.Date).IsRequired();
+            modelBuilder.Entity<MilkEntry>().Property(m => m.QuantityLiters).IsRequired().HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<MilkEntry>().Property(m => m.TotalCost).IsRequired().HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<MilkEntry>().Property(m => m.AdminId).IsRequired().HasMaxLength(450);
 
             // ElectricityBill configuration
             modelBuilder.Entity<ElectricityBill>().Property(b => b.ReferenceNumber).IsRequired().HasMaxLength(100);
-            modelBuilder.Entity<ElectricityBill>().Property(b => b.Month).IsRequired().HasMaxLength(7); // e.g., "2025-07"
-            modelBuilder.Entity<ElectricityBill>().Property(b => b.FilePath).IsRequired(false);
+            modelBuilder.Entity<ElectricityBill>().Property(b => b.Month).IsRequired().HasMaxLength(7);
+            modelBuilder.Entity<ElectricityBill>().Property(b => b.FilePath).IsRequired(false).HasMaxLength(500);
+            modelBuilder.Entity<ElectricityBill>().Property(b => b.Amount).IsRequired().HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<ElectricityBill>().Property(b => b.AdminId).IsRequired().HasMaxLength(450);
 
             // RentEntry configuration
             modelBuilder.Entity<RentEntry>().Property(r => r.Month).IsRequired().HasMaxLength(7);
+            modelBuilder.Entity<RentEntry>().Property(r => r.Amount).IsRequired().HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<RentEntry>().Property(r => r.AdminId).IsRequired().HasMaxLength(450);
 
             // Settings configuration
-            modelBuilder.Entity<Settings>().Property(s => s.MilkRatePerLiter).IsRequired();
+            modelBuilder.Entity<Settings>().Property(s => s.MilkRatePerLiter).IsRequired().HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<Settings>().Property(s => s.UserId).IsRequired().HasMaxLength(450);
         }
     }
 }

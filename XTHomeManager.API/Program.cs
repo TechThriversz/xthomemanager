@@ -1,9 +1,12 @@
-using Microsoft.EntityFrameworkCore;
-using XTHomeManager.API.Data;
-using XTHomeManager.API.Services;
+using Amazon.Runtime;
+using Amazon.S3;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using XTHomeManager.API.Data;
+using XTHomeManager.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +32,24 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Configure AWS services for Cloudflare R2
+builder.Services.AddSingleton<AmazonS3Client>(sp =>
+{
+    var config = new AmazonS3Config
+    {
+        ServiceURL = "https://1264ab1158e680e14e1634cfd0f3d033.r2.cloudflarestorage.com",
+        ForcePathStyle = true
+    };
+
+    var credentials = new BasicAWSCredentials(
+        builder.Configuration["AWS:AccessKey"],
+        builder.Configuration["AWS:SecretKey"]
+    );
+
+    return new AmazonS3Client(credentials, config);
+});
+
+// Add authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {

@@ -12,8 +12,8 @@ using XTHomeManager.API.Data;
 namespace XTHomeManager.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20250721191839_UpdateIntIds")]
-    partial class UpdateIntIds
+    [Migration("20250723160812_FixMilkEntriesSchema")]
+    partial class FixMilkEntriesSchema
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -35,13 +35,15 @@ namespace XTHomeManager.API.Migrations
 
                     b.Property<string>("AdminId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<decimal>("Amount")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("FilePath")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("Month")
                         .IsRequired()
@@ -71,7 +73,8 @@ namespace XTHomeManager.API.Migrations
 
                     b.Property<string>("AdminId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("Date")
                         .HasColumnType("datetime2");
@@ -79,18 +82,19 @@ namespace XTHomeManager.API.Migrations
                     b.Property<decimal>("QuantityLiters")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<decimal>("RatePerLiter")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<int>("RecordId")
                         .HasColumnType("int");
 
                     b.Property<string>("Status")
-                        .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<decimal>("TotalCost")
+                        .HasColumnType("decimal(18,2)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("RecordId");
 
                     b.ToTable("MilkEntries");
                 });
@@ -142,7 +146,8 @@ namespace XTHomeManager.API.Migrations
 
                     b.Property<string>("AdminId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<decimal>("Amount")
                         .HasColumnType("decimal(18,2)");
@@ -173,7 +178,8 @@ namespace XTHomeManager.API.Migrations
 
                     b.Property<string>("UserId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
 
@@ -215,6 +221,17 @@ namespace XTHomeManager.API.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("XTHomeManager.API.Models.MilkEntry", b =>
+                {
+                    b.HasOne("XTHomeManager.API.Models.Record", "Record")
+                        .WithMany()
+                        .HasForeignKey("RecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Record");
                 });
 
             modelBuilder.Entity("XTHomeManager.API.Models.Record", b =>

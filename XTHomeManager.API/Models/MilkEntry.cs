@@ -1,14 +1,29 @@
-﻿namespace XTHomeManager.API.Models
+﻿using System;
+using System.ComponentModel.DataAnnotations;
+
+namespace XTHomeManager.API.Models
 {
     public class MilkEntry
     {
         public int Id { get; set; }
-        public int RecordId { get; set; } // Links to Record
+
+        [Required]
+        public int RecordId { get; set; }
+
+        [Required]
         public DateTime Date { get; set; }
+
+        [Required]
         public decimal QuantityLiters { get; set; }
-        public string Status { get; set; } // "Bought" or "Leave"
-        public decimal RatePerLiter { get; set; } // From Settings
-        public decimal TotalCost => Status == "Bought" ? QuantityLiters * RatePerLiter : 0; // Calculated
-        public string AdminId { get; set; } // Links to Admin user
+
+        [Required]
+        public decimal TotalCost { get; set; }
+
+        [Required]
+        public string AdminId { get; set; }
+
+        public string? Status { get; set; }
+
+        public Record? Record { get; set; }
     }
 }

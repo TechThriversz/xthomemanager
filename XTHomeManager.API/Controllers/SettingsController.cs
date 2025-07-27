@@ -20,28 +20,44 @@ namespace XTHomeManager.API.Controllers
         public async Task<ActionResult<Settings>> GetSettings()
         {
             var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized("User ID not found in token.");
+            }
+
             var settings = await _context.Settings.FirstOrDefaultAsync(s => s.UserId == userId);
             if (settings == null)
-                return NotFound();
-            return settings;
+            {
+                settings = new Settings { UserId = userId, MilkRatePerLiter = 0 };
+                _context.Settings.Add(settings);
+                await _context.SaveChangesAsync();
+            }
+            return Ok(settings);
+        }
+
+        public class SettingsUpdateDto
+        {
+            public decimal MilkRatePerLiter { get; set; }
         }
 
         [HttpPost]
-        public async Task<ActionResult<Settings>> UpdateSettings(Settings settings)
+        public async Task<ActionResult<Settings>> UpdateSettings([FromBody] SettingsUpdateDto settingsDto)
         {
             var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized("User ID not found in token.");
+            }
+
             var existing = await _context.Settings.FirstOrDefaultAsync(s => s.UserId == userId);
             if (existing == null)
             {
-                settings.UserId = userId;
-                _context.Settings.Add(settings);
+                return NotFound("Settings not found for the user.");
             }
-            else
-            {
-                existing.MilkRatePerLiter = settings.MilkRatePerLiter;
-            }
+
+            existing.MilkRatePerLiter = settingsDto.MilkRatePerLiter;
             await _context.SaveChangesAsync();
-            return Ok(settings);
+            return Ok(existing);
         }
     }
 }
