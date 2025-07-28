@@ -63,14 +63,29 @@ namespace XTHomeManager.API.Controllers
                 return StatusCode(500, "An error occurred while fetching milk analytics: " + ex.Message);
             }
         }
-
         [HttpPost]
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<MilkEntry>> CreateMilkEntry([FromBody] MilkEntry entry)
         {
             try
             {
-                Console.WriteLine($"CreateMilkEntry: Received payload - {System.Text.Json.JsonSerializer.Serialize(entry)}");
+                // Log the raw request body for debugging
+                using var reader = new StreamReader(Request.Body);
+                var body = await reader.ReadToEndAsync();
+                Console.WriteLine($"CreateMilkEntry: Raw request body - {body}");
+
+                // Log the deserialized entry
+                Console.WriteLine($"CreateMilkEntry: Deserialized payload - {System.Text.Json.JsonSerializer.Serialize(entry)}");
+
+                // Remove validation for navigation property if causing issues
+                ModelState.Remove("Record");
+
+                if (!ModelState.IsValid)
+                {
+                    Console.WriteLine($"CreateMilkEntry: Model validation failed - {System.Text.Json.JsonSerializer.Serialize(ModelState)}");
+                    return BadRequest(ModelState);
+                }
+
                 if (!await _context.Records.AnyAsync(r => r.Id == entry.RecordId))
                 {
                     Console.WriteLine($"CreateMilkEntry: Invalid Record ID - {entry.RecordId}");
@@ -105,6 +120,9 @@ namespace XTHomeManager.API.Controllers
                     Console.WriteLine($"GetMilkEntries: Invalid Record ID - {recordId}");
                     return BadRequest("Invalid Record ID");
                 }
+                var settings = await _context.Settings.FirstOrDefaultAsync();
+                var milkRatePerLiter = settings?.MilkRatePerLiter ?? 0m;
+                Console.WriteLine($"GetMilkEntries: Milk rate per liter - {milkRatePerLiter}");
                 var entries = await _context.MilkEntries
                     .Where(m => m.RecordId == recordId)
                     .ToListAsync();

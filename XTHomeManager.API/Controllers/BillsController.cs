@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Amazon.S3;
+using Amazon.S3.Model;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using XTHomeManager.API.Data;
@@ -14,10 +16,12 @@ namespace XTHomeManager.API.Controllers
     public class BillsController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly AmazonS3Client _s3Client; // Inject S3 client
 
-        public BillsController(AppDbContext context)
+        public BillsController(AppDbContext context, AmazonS3Client s3Client)
         {
             _context = context;
+            _s3Client = s3Client ?? throw new ArgumentNullException(nameof(s3Client), "S3 client is not initialized.");
         }
 
         [HttpGet("{recordId}")]
@@ -35,6 +39,7 @@ namespace XTHomeManager.API.Controllers
                 var entries = await _context.ElectricityBills
                     .Where(b => b.RecordId == recordId)
                     .ToListAsync();
+                Console.WriteLine($"GetBills: Returned entries - {System.Text.Json.JsonSerializer.Serialize(entries)}");
                 return Ok(entries ?? new List<ElectricityBill>());
             }
             catch (Exception ex)
@@ -46,11 +51,12 @@ namespace XTHomeManager.API.Controllers
 
         [HttpPost]
         [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<ElectricityBill>> CreateBill([FromForm] ElectricityBill entry)
+        public async Task<ActionResult<ElectricityBill>> CreateBill([FromForm] ElectricityBill entry, IFormFile? file)
         {
             try
             {
-                Console.WriteLine($"CreateBill: Received payload - RecordId: {entry.RecordId}, Month: {entry.Month}, Amount: {entry.Amount}, ReferenceNumber: {entry.ReferenceNumber}, AdminId: {entry.AdminId}");
+                // Log the raw form data
+                Console.WriteLine($"CreateBill: Received payload - RecordId: {entry.RecordId}, Month: {entry.Month}, Amount: {entry.Amount}, ReferenceNumber: {entry.ReferenceNumber}, AdminId: {entry.AdminId}, File: {(file != null ? file.FileName : "null")}");
                 if (!await _context.Records.AnyAsync(r => r.Id == entry.RecordId))
                 {
                     Console.WriteLine($"CreateBill: Invalid Record ID - {entry.RecordId}");
@@ -71,11 +77,35 @@ namespace XTHomeManager.API.Controllers
                     Console.WriteLine($"CreateBill: Invalid Amount - {entry.Amount}");
                     return BadRequest("Amount must be greater than 0");
                 }
-                if (entry.FilePath != null)
+
+                // Handle image upload to Cloudflare R2
+                if (file != null && file.Length > 0)
                 {
-                    var filePath = Path.Combine("uploads", $"{Guid.NewGuid()}{Path.GetExtension(entry.FilePath)}");
-                    Directory.CreateDirectory(Path.GetDirectoryName(filePath));
-                    entry.FilePath = filePath;
+                    var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
+                    var uploadRequest = new PutObjectRequest
+                    {
+                        BucketName = "xthomemanager-uploads",
+                        Key = fileName,
+                        ContentType = file.ContentType,
+                        DisablePayloadSigning = true
+                    };
+
+                    using (var memoryStream = new MemoryStream())
+                    {
+                        await file.CopyToAsync(memoryStream);
+                        memoryStream.Position = 0;
+                        uploadRequest.InputStream = memoryStream;
+                        var response = await _s3Client.PutObjectAsync(uploadRequest);
+                        Console.WriteLine($"CreateBill: Upload response - {response.HttpStatusCode}");
+                    }
+
+                    entry.FilePath = fileName; // Store the filename in FilePath
+                    Console.WriteLine($"CreateBill: Set FilePath to {entry.FilePath}");
+                }
+                else
+                {
+                    entry.FilePath = null; // Ensure FilePath is null if no file
+                    Console.WriteLine($"CreateBill: No file uploaded, FilePath set to null");
                 }
 
                 var authUserId = User.FindFirst("id")?.Value;
@@ -87,13 +117,13 @@ namespace XTHomeManager.API.Controllers
 
                 _context.ElectricityBills.Add(entry);
                 await _context.SaveChangesAsync();
-                Console.WriteLine($"CreateBill: Successfully created bill ID: {entry.Id}");
+                Console.WriteLine($"CreateBill: Successfully created bill ID: {entry.Id}, with FilePath: {entry.FilePath}");
                 return CreatedAtAction(nameof(GetBills), new { recordId = entry.RecordId }, entry);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"CreateBill: Error - {ex.Message}, StackTrace: {ex.StackTrace}");
-                return StatusCode(500, "An error occurred while creating the bill entry");
+                return StatusCode(500, "An error occurred while creating the bill entry: " + ex.Message);
             }
         }
 
