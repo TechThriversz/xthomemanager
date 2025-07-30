@@ -8,6 +8,7 @@ using XTHomeManager.API.Models;
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using System.Linq;
 
 namespace XTHomeManager.API.Controllers
 {
@@ -16,7 +17,7 @@ namespace XTHomeManager.API.Controllers
     public class BillsController : ControllerBase
     {
         private readonly AppDbContext _context;
-        private readonly AmazonS3Client _s3Client; // Inject S3 client
+        private readonly AmazonS3Client _s3Client;
 
         public BillsController(AppDbContext context, AmazonS3Client s3Client)
         {
@@ -49,13 +50,41 @@ namespace XTHomeManager.API.Controllers
             }
         }
 
+        [HttpGet("analytics/{recordId}")]
+        [Authorize]
+        public async Task<ActionResult<object>> GetBillsAnalytics(int recordId)
+        {
+            try
+            {
+                Console.WriteLine($"GetBillsAnalytics: Fetching analytics for recordId: {recordId}");
+                if (!await _context.Records.AnyAsync(r => r.Id == recordId))
+                {
+                    Console.WriteLine($"GetBillsAnalytics: Invalid Record ID - {recordId}");
+                    return BadRequest("Invalid Record ID");
+                }
+
+                var monthlyTotals = await _context.ElectricityBills
+                    .Where(b => b.RecordId == recordId)
+                    .GroupBy(b => b.Month)
+                    .Select(g => new { month = g.Key, totalAmount = g.Sum(b => b.Amount) })
+                    .ToListAsync();
+
+                Console.WriteLine($"GetBillsAnalytics: Result - {System.Text.Json.JsonSerializer.Serialize(monthlyTotals)}");
+                return new { monthlyTotals };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GetBillsAnalytics: Error - {ex.Message}, StackTrace: {ex.StackTrace}");
+                return StatusCode(500, "An error occurred while fetching bill analytics: " + ex.Message);
+            }
+        }
+
         [HttpPost]
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<ElectricityBill>> CreateBill([FromForm] ElectricityBill entry, IFormFile? file)
         {
             try
             {
-                // Log the raw form data
                 Console.WriteLine($"CreateBill: Received payload - RecordId: {entry.RecordId}, Month: {entry.Month}, Amount: {entry.Amount}, ReferenceNumber: {entry.ReferenceNumber}, AdminId: {entry.AdminId}, File: {(file != null ? file.FileName : "null")}");
                 if (!await _context.Records.AnyAsync(r => r.Id == entry.RecordId))
                 {
@@ -78,7 +107,6 @@ namespace XTHomeManager.API.Controllers
                     return BadRequest("Amount must be greater than 0");
                 }
 
-                // Handle image upload to Cloudflare R2
                 if (file != null && file.Length > 0)
                 {
                     var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
@@ -99,12 +127,12 @@ namespace XTHomeManager.API.Controllers
                         Console.WriteLine($"CreateBill: Upload response - {response.HttpStatusCode}");
                     }
 
-                    entry.FilePath = fileName; // Store the filename in FilePath
+                    entry.FilePath = fileName;
                     Console.WriteLine($"CreateBill: Set FilePath to {entry.FilePath}");
                 }
                 else
                 {
-                    entry.FilePath = null; // Ensure FilePath is null if no file
+                    entry.FilePath = null;
                     Console.WriteLine($"CreateBill: No file uploaded, FilePath set to null");
                 }
 

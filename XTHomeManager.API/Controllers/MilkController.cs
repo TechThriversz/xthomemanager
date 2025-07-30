@@ -39,7 +39,7 @@ namespace XTHomeManager.API.Controllers
                 }
 
                 var query = _context.MilkEntries
-                    .Where(m => m.RecordId == parsedRecordId && m.Status != "Leave");
+                    .Where(m => m.RecordId == parsedRecordId);
 
                 if (!string.IsNullOrEmpty(month))
                 {
@@ -53,9 +53,17 @@ namespace XTHomeManager.API.Controllers
 
                 var totalQuantity = await query.SumAsync(m => m.QuantityLiters);
                 var totalCost = await query.SumAsync(m => m.TotalCost);
+                var monthlyTotals = await query
+                    .GroupBy(m => m.Date.ToString("yyyy-MM"))
+                    .Select(g => new { month = g.Key, totalCost = g.Sum(m => m.TotalCost) })
+                    .ToListAsync();
+                var statusCounts = await query
+                    .GroupBy(m => m.Status)
+                    .Select(g => new { status = g.Key, count = g.Count() })
+                    .ToDictionaryAsync(g => g.status, g => g.count);
 
-                Console.WriteLine($"GetMilkAnalytics: Result - recordId: {parsedRecordId}, totalQuantity: {totalQuantity}, totalCost: {totalCost}");
-                return new { recordId = parsedRecordId, totalQuantity, totalCost };
+                Console.WriteLine($"GetMilkAnalytics: Result - recordId: {parsedRecordId}, totalQuantity: {totalQuantity}, totalCost: {totalCost}, monthlyTotals: {System.Text.Json.JsonSerializer.Serialize(monthlyTotals)}, statusCounts: {System.Text.Json.JsonSerializer.Serialize(statusCounts)}");
+                return new { recordId = parsedRecordId, totalQuantity, totalCost, monthlyTotals, statusCounts };
             }
             catch (Exception ex)
             {
@@ -63,21 +71,19 @@ namespace XTHomeManager.API.Controllers
                 return StatusCode(500, "An error occurred while fetching milk analytics: " + ex.Message);
             }
         }
+
         [HttpPost]
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<MilkEntry>> CreateMilkEntry([FromBody] MilkEntry entry)
         {
             try
             {
-                // Log the raw request body for debugging
                 using var reader = new StreamReader(Request.Body);
                 var body = await reader.ReadToEndAsync();
                 Console.WriteLine($"CreateMilkEntry: Raw request body - {body}");
 
-                // Log the deserialized entry
                 Console.WriteLine($"CreateMilkEntry: Deserialized payload - {System.Text.Json.JsonSerializer.Serialize(entry)}");
 
-                // Remove validation for navigation property if causing issues
                 ModelState.Remove("Record");
 
                 if (!ModelState.IsValid)
