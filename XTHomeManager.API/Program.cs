@@ -18,17 +18,21 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<UserService>();
 
-// Configure CORS
+// Configure CORS for React Native and Web
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowSpecificOrigins", builder =>
+    options.AddPolicy("AllowReactNativeAndWebOrigins", builder =>
     {
         builder.WithOrigins(
-                "https://xthomemanagerfe.vercel.app",
-                "http://localhost:5173")
-               .AllowAnyHeader()
-               .AllowAnyMethod()
-               .AllowCredentials();
+                "https://xthomemanagerfe.vercel.app", // Existing web frontend
+                "http://localhost:5173",             // Existing web dev server
+                "http://localhost:8081",            // React Native Metro bundler
+                "http://192.168.1.0/24"             // Allow local network range (adjust as needed)
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials()
+            .SetIsOriginAllowedToAllowWildcardSubdomains(); // Allows subdomains if needed
     });
 });
 
@@ -75,7 +79,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseCors("AllowSpecificOrigins");
+app.UseCors("AllowReactNativeAndWebOrigins");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
