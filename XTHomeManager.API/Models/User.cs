@@ -9,5 +9,7 @@
         public string Role { get; set; }
         public string? AdminId { get; set; }
         public string? ImagePath { get; set; }
+        public string? PasswordResetToken { get; set; } // Added for password reset token
+        public DateTime? PasswordResetTokenExpiry { get; set; } // Added for token expiration
     }
 }

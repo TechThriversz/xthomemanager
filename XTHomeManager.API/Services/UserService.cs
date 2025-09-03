@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿// UserService.cs
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -16,18 +17,24 @@ namespace XTHomeManager.API.Services
 
         public UserService(AppDbContext context, IConfiguration configuration)
         {
-            _context = context;
-            _configuration = configuration;
+            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         }
 
         public async Task<User> RegisterAsync(string email, string fullName, string password, string role = "Admin")
         {
+            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(fullName) || string.IsNullOrEmpty(password))
+                throw new ArgumentNullException("Email, full name, and password are required.");
+
+            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            if (existingUser != null) return null;
+
             var user = new User
             {
-                Email = email ?? throw new ArgumentNullException(nameof(email)),
-                FullName = fullName ?? throw new ArgumentNullException(nameof(fullName)),
+                Email = email,
+                FullName = fullName,
                 PasswordHash = HashPassword(password),
-                Role = role ?? "Admin"
+                Role = role
             };
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
@@ -42,17 +49,8 @@ namespace XTHomeManager.API.Services
                     .Where(u => u.Email == email)
                     .FirstOrDefaultAsync();
 
-                if (user == null)
-                {
-                    Console.WriteLine($"Login failed for {email}: User not found");
+                if (user == null || string.IsNullOrEmpty(user.PasswordHash) || !VerifyPassword(password, user.PasswordHash))
                     return null;
-                }
-
-                if (string.IsNullOrEmpty(user.PasswordHash) || !VerifyPassword(password, user.PasswordHash))
-                {
-                    Console.WriteLine($"Login failed for {email}: Password mismatch or PasswordHash is null");
-                    return null;
-                }
 
                 return user;
             }
@@ -63,12 +61,18 @@ namespace XTHomeManager.API.Services
             }
         }
 
-        public async Task<User> InviteViewerAsync(string email, string fullName, string adminId, string recordName)
+        public async Task<User> InviteViewerAsync(string email, string adminId, string recordName)
         {
+            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(adminId))
+                throw new ArgumentNullException("Email and adminId are required.");
+
+            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            if (existingUser != null) throw new InvalidOperationException("User with this email already exists.");
+
             var user = new User
             {
-                Email = email ?? throw new ArgumentNullException(nameof(email)),
-                FullName = fullName ?? throw new ArgumentNullException(nameof(fullName)),
+                Email = email,
+                FullName = email.Split('@')[0], // Auto-generate full name from email
                 PasswordHash = HashPassword(GenerateRandomPassword()),
                 Role = "Viewer",
                 AdminId = adminId
@@ -89,6 +93,9 @@ namespace XTHomeManager.API.Services
 
         public async Task RevokeViewerAccessAsync(string viewerId, string recordName, string recordType)
         {
+            if (string.IsNullOrEmpty(viewerId) || string.IsNullOrEmpty(recordName) || string.IsNullOrEmpty(recordType))
+                throw new ArgumentNullException("ViewerId, recordName, and recordType are required.");
+
             var record = await _context.Records.FirstOrDefaultAsync(r => r.ViewerId == viewerId && r.Name == recordName && r.Type == recordType);
             if (record != null)
             {
@@ -98,11 +105,44 @@ namespace XTHomeManager.API.Services
             }
         }
 
+        public async Task<(User, string)> GeneratePasswordResetTokenAsync(string email)
+        {
+            if (string.IsNullOrEmpty(email))
+                throw new ArgumentNullException(nameof(email));
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            if (user == null) return (null, null);
+
+            var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+            user.PasswordResetToken = token;
+            user.PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(1);
+
+            await _context.SaveChangesAsync();
+            return (user, token);
+        }
+
+        public async Task<bool> ResetPasswordAsync(string email, string token, string newPassword)
+        {
+            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(token) || string.IsNullOrEmpty(newPassword))
+                throw new ArgumentNullException("Email, token, and new password are required.");
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            if (user == null || user.PasswordResetToken != token || user.PasswordResetTokenExpiry <= DateTime.UtcNow)
+                return false;
+
+            user.PasswordHash = HashPassword(newPassword);
+            user.PasswordResetToken = null;
+            user.PasswordResetTokenExpiry = null;
+
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
         public string GenerateJwtToken(User user)
         {
             var claims = new List<Claim>
             {
-                new Claim("id", user.Id), // Ensure 'id' claim is included
+                new Claim("id", user.Id),
                 new Claim(JwtRegisteredClaimNames.Sub, user.Email),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
                 new Claim(ClaimTypes.Role, user.Role),
@@ -132,7 +172,6 @@ namespace XTHomeManager.API.Services
         private bool VerifyPassword(string password, string hash)
         {
             var computedHash = HashPassword(password);
-            Console.WriteLine($"Input Password: {password}, Computed Hash: {computedHash}, Stored Hash: {hash}");
             return computedHash == hash;
         }
 

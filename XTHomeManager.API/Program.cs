@@ -17,6 +17,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<EmailService>();
 
 // Configure CORS for React Native and Web
 builder.Services.AddCors(options =>
