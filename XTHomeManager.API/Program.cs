@@ -26,9 +26,11 @@ builder.Services.AddCors(options =>
     {
         builder.WithOrigins(
                 "https://xthomemanagerfe.vercel.app", // Existing web frontend
+                "https://xthomemanager.vercel.app",   // Corrected web frontend URL
                 "http://localhost:5173",             // Existing web dev server
-                "http://localhost:8081",            // React Native Metro bundler
-                "http://192.168.1.0/24"             // Allow local network range (adjust as needed)
+                "http://localhost:8081",             // React Native Metro bundler
+                "http://192.168.1.0/24",             // Allow local network range (adjust as needed)
+                "https://hmapi.somee.com"            // Explicitly allow the API host
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
@@ -72,12 +74,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 app.UseCors("AllowReactNativeAndWebOrigins");
