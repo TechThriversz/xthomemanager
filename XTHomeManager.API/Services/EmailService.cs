@@ -1,4 +1,5 @@
-﻿using MailKit.Net.Smtp;
+﻿// EmailService.cs
+using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Configuration;
 using MimeKit;
@@ -32,7 +33,15 @@ namespace XTHomeManager.API.Services
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
 
-        private async Task<string> LoadTemplateAsync(string templatePath, string name, string resetLink = null)
+        public async Task SendInviteEmailAsync(string toEmail, string name, string inviterName, string recordName, string tempPassword)
+        {
+            var subject = "You’ve Been Invited to View a Record on XT Home Manager";
+            var templatePath = Path.Combine("EmailTemplates", "InviteEmailTemplate.html");
+            var htmlContent = await LoadTemplateAsync(templatePath, name, inviterName, recordName, tempPassword);
+            await SendEmailAsync(toEmail, subject, htmlContent);
+        }
+
+        private async Task<string> LoadTemplateAsync(string templatePath, string name, string inviterName = null, string recordName = null, string tempPassword = null, string resetLink = null)
         {
             if (!File.Exists(templatePath))
                 throw new FileNotFoundException($"Email template not found at {templatePath}");
@@ -40,6 +49,9 @@ namespace XTHomeManager.API.Services
             var htmlContent = await File.ReadAllTextAsync(templatePath);
             htmlContent = htmlContent.Replace("{{name}}", name ?? "User");
             if (resetLink != null) htmlContent = htmlContent.Replace("{{reset_link}}", resetLink);
+            if (inviterName != null) htmlContent = htmlContent.Replace("{{inviter_name}}", inviterName);
+            if (recordName != null) htmlContent = htmlContent.Replace("{{record_name}}", recordName);
+            if (tempPassword != null) htmlContent = htmlContent.Replace("{{temp_password}}", tempPassword);
             return htmlContent;
         }
 

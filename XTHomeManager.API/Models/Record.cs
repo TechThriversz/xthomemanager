@@ -14,14 +14,30 @@ namespace XTHomeManager.API.Models
         [Required]
         public string Type { get; set; }
 
-        [Required]
+        // Make UserId optional; set server-side
         public string UserId { get; set; }
 
-        public string? ViewerId { get; set; }
+        [JsonIgnore]
+        public User User { get; set; }
 
-        public bool AllowViewerAccess { get; set; }
+        // Make Viewers optional; managed by context
 
-        [JsonIgnore] // Exclude User from JSON serialization
-        public User? User { get; set; }
+        [JsonIgnore]
+        public ICollection<RecordViewer> Viewers
+        {
+            get; set;
+        }
     }
+
+    public class CreateRecordDto
+    {
+        [Required]
+        [StringLength(100)]
+        public string Name { get; set; }
+
+        [Required]
+        public string Type { get; set; }
+    }
+
+
 }

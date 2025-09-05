@@ -12,8 +12,8 @@ using XTHomeManager.API.Data;
 namespace XTHomeManager.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20250728152932_MakeRecordNullable")]
-    partial class MakeRecordNullable
+    [Migration("20250905123139_UpdateNewTable")]
+    partial class UpdateNewTable
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -107,9 +107,6 @@ namespace XTHomeManager.API.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<bool>("AllowViewerAccess")
-                        .HasColumnType("bit");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -121,11 +118,6 @@ namespace XTHomeManager.API.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("ViewerId")
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
@@ -134,6 +126,31 @@ namespace XTHomeManager.API.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Records");
+                });
+
+            modelBuilder.Entity("XTHomeManager.API.Models.RecordViewer", b =>
+                {
+                    b.Property<int>("RecordId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("AllowViewerAccess")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsAccepted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.HasKey("RecordId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RecordViewers");
                 });
 
             modelBuilder.Entity("XTHomeManager.API.Models.RentEntry", b =>
@@ -213,6 +230,12 @@ namespace XTHomeManager.API.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PasswordResetToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("PasswordResetTokenExpiry")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -238,11 +261,38 @@ namespace XTHomeManager.API.Migrations
                 {
                     b.HasOne("XTHomeManager.API.Models.User", "User")
                         .WithMany()
+                        .HasForeignKey("UserId");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("XTHomeManager.API.Models.RecordViewer", b =>
+                {
+                    b.HasOne("XTHomeManager.API.Models.Record", "Record")
+                        .WithMany("Viewers")
+                        .HasForeignKey("RecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("XTHomeManager.API.Models.User", "User")
+                        .WithMany("ViewerRecords")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("Record");
+
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("XTHomeManager.API.Models.Record", b =>
+                {
+                    b.Navigation("Viewers");
+                });
+
+            modelBuilder.Entity("XTHomeManager.API.Models.User", b =>
+                {
+                    b.Navigation("ViewerRecords");
                 });
 #pragma warning restore 612, 618
         }

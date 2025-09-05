@@ -5,7 +5,7 @@
 namespace XTHomeManager.API.Migrations
 {
     /// <inheritdoc />
-    public partial class MakeRecordNullable : Migration
+    public partial class UpdateRecordTableIgnore : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

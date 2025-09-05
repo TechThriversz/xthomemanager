@@ -1,4 +1,6 @@
-﻿namespace XTHomeManager.API.Models
+﻿using System.Text.Json.Serialization;
+
+namespace XTHomeManager.API.Models
 {
     public class User
     {
@@ -10,6 +12,9 @@
         public string? AdminId { get; set; }
         public string? ImagePath { get; set; }
         public string? PasswordResetToken { get; set; } // Added for password reset token
-        public DateTime? PasswordResetTokenExpiry { get; set; } // Added for token expiration
+        public DateTime? PasswordResetTokenExpiry { get; set; } // Added for token expirations
+
+        [JsonIgnore]
+        public ICollection<RecordViewer> ViewerRecords { get; set; }
     }
 }

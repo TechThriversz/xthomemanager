@@ -13,6 +13,7 @@ namespace XTHomeManager.API.Data
         public DbSet<ElectricityBill> ElectricityBills { get; set; }
         public DbSet<RentEntry> RentEntries { get; set; }
         public DbSet<Settings> Settings { get; set; }
+        public DbSet<RecordViewer> RecordViewers { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -28,8 +29,30 @@ namespace XTHomeManager.API.Data
             // Record configuration
             modelBuilder.Entity<Record>().Property(r => r.Name).IsRequired().HasMaxLength(100);
             modelBuilder.Entity<Record>().Property(r => r.Type).IsRequired().HasMaxLength(50);
-            modelBuilder.Entity<Record>().Property(r => r.UserId).IsRequired().HasMaxLength(450);
-            modelBuilder.Entity<Record>().Property(r => r.ViewerId).IsRequired(false).HasMaxLength(450);
+            modelBuilder.Entity<Record>().Property(r => r.UserId).HasMaxLength(450).IsRequired(false); // Nullable
+            // Remove ViewerId and AllowViewerAccess configurations
+
+            // RecordViewer configuration
+            modelBuilder.Entity<RecordViewer>()
+                .HasKey(rv => new { rv.RecordId, rv.UserId });
+
+            modelBuilder.Entity<RecordViewer>()
+                .HasOne(rv => rv.Record)
+                .WithMany(r => r.Viewers)
+                .HasForeignKey(rv => rv.RecordId);
+
+            modelBuilder.Entity<RecordViewer>()
+                .HasOne(rv => rv.User)
+                .WithMany(u => u.ViewerRecords)
+                .HasForeignKey(rv => rv.UserId);
+
+            modelBuilder.Entity<RecordViewer>()
+                .Property(rv => rv.AllowViewerAccess)
+                .HasDefaultValue(true);
+
+            modelBuilder.Entity<RecordViewer>()
+            .Property(rv => rv.IsAccepted)
+            .HasDefaultValue(false);
 
             // MilkEntry configuration
             modelBuilder.Entity<MilkEntry>().Property(m => m.Status).IsRequired(false).HasMaxLength(50);

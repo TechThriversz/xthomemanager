@@ -1,5 +1,4 @@
-﻿// UserService.cs
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -19,6 +18,16 @@ namespace XTHomeManager.API.Services
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        }
+
+        public async Task<User> GetUserByIdAsync(string id)
+        {
+            return await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
+        }
+
+        public async Task<User> GetUserByEmailAsync(string email)
+        {
+            return await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
         }
 
         public async Task<User> RegisterAsync(string email, string fullName, string password, string role = "Admin")
@@ -52,6 +61,27 @@ namespace XTHomeManager.API.Services
                 if (user == null || string.IsNullOrEmpty(user.PasswordHash) || !VerifyPassword(password, user.PasswordHash))
                     return null;
 
+                // Update IsAccepted for viewers on first login
+                if (user.Role == "Viewer")
+                {
+                    var viewerRecords = await _context.RecordViewers
+                        .Where(rv => rv.UserId == user.Id && !rv.IsAccepted)
+                        .ToListAsync();
+                    if (viewerRecords.Any())
+                    {
+                        foreach (var rv in viewerRecords)
+                        {
+                            rv.IsAccepted = true;
+                        }
+                        await _context.SaveChangesAsync();
+                    }
+                }
+
+                if (user.Role == "Viewer" && user.PasswordResetTokenExpiry.HasValue && user.PasswordResetTokenExpiry.Value > DateTime.UtcNow)
+                {
+                    return user; // Let controller handle password change prompt
+                }
+
                 return user;
             }
             catch (Exception ex)
@@ -61,47 +91,87 @@ namespace XTHomeManager.API.Services
             }
         }
 
-        public async Task<User> InviteViewerAsync(string email, string adminId, string recordName)
+        public async Task<(User, string)> InviteOrUpdateViewerAsync(string email, string inviterName, string adminId, string recordName, string tempPassword)
         {
-            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(adminId))
-                throw new ArgumentNullException("Email and adminId are required.");
-
             var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
-            if (existingUser != null) throw new InvalidOperationException("User with this email already exists.");
+            var adminRecord = await _context.Records.FirstOrDefaultAsync(r => r.Name == recordName && r.UserId == adminId);
 
-            var user = new User
-            {
-                Email = email,
-                FullName = email.Split('@')[0], // Auto-generate full name from email
-                PasswordHash = HashPassword(GenerateRandomPassword()),
-                Role = "Viewer",
-                AdminId = adminId
-            };
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+            if (adminRecord == null) return (null, "Record not found for this admin.");
 
-            var record = await _context.Records.FirstOrDefaultAsync(r => r.Name == recordName && r.UserId == adminId);
-            if (record != null)
+            if (existingUser != null)
             {
-                record.ViewerId = user.Id;
-                record.AllowViewerAccess = true;
+                var existingViewer = await _context.RecordViewers
+                    .FirstOrDefaultAsync(rv => rv.RecordId == adminRecord.Id && rv.UserId == existingUser.Id);
+                if (existingViewer != null)
+                {
+                    return (null, $"User already viewer in this record: {recordName}");
+                }
+                var newViewer = new RecordViewer { RecordId = adminRecord.Id, UserId = existingUser.Id, AllowViewerAccess = true, IsAccepted = false };
+                _context.RecordViewers.Add(newViewer);
                 await _context.SaveChangesAsync();
+                return (existingUser, $"User {email} added as viewer for {recordName}");
             }
 
-            return user;
-        }
+            var newUser = new User
+            {
+                Email = email,
+                FullName = email.Split('@')[0],
+                PasswordHash = HashPassword(tempPassword),
+                Role = "Viewer",
+                AdminId = adminId,
+                PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(24)
+            };
+            _context.Users.Add(newUser);
+            await _context.SaveChangesAsync();
 
+            var newViewerRecord = new RecordViewer { RecordId = adminRecord.Id, UserId = newUser.Id, AllowViewerAccess = true, IsAccepted = false };
+            _context.RecordViewers.Add(newViewerRecord);
+            await _context.SaveChangesAsync();
+
+            return (newUser, $"New user {email} invited as viewer for {recordName} with temporary password");
+        }
+        public async Task<List<InvitedViewerDto>> GetInvitedViewersAsync(string adminId)
+        {
+            var viewers = await _context.Users
+                .Where(u => u.AdminId == adminId && u.Role == "Viewer")
+                .Select(u => new InvitedViewerDto
+                {
+                    Id = u.Id,
+                    Email = u.Email,
+                    FullName = u.FullName,
+                    Role = u.Role,
+                    Records = _context.RecordViewers
+                        .Where(rv => rv.UserId == u.Id && rv.Record.UserId == adminId)
+                        .Select(rv => new RecordDto
+                        {
+                            Id = rv.Record.Id,
+                            Name = rv.Record.Name,
+                            Type = rv.Record.Type,
+                            Accepted = rv.AllowViewerAccess,
+                            IsAccepted = rv.IsAccepted
+                        })
+                        .ToList()
+                })
+                .ToListAsync();
+
+            return viewers;
+        }
         public async Task RevokeViewerAccessAsync(string viewerId, string recordName, string recordType)
         {
             if (string.IsNullOrEmpty(viewerId) || string.IsNullOrEmpty(recordName) || string.IsNullOrEmpty(recordType))
                 throw new ArgumentNullException("ViewerId, recordName, and recordType are required.");
 
-            var record = await _context.Records.FirstOrDefaultAsync(r => r.ViewerId == viewerId && r.Name == recordName && r.Type == recordType);
+            var record = await _context.Records
+                .FirstOrDefaultAsync(r => r.Name == recordName && r.Type == recordType && r.UserId == viewerId);
             if (record != null)
             {
-                record.ViewerId = null;
-                record.AllowViewerAccess = false;
-                await _context.SaveChangesAsync();
+                var viewerRecord = await _context.RecordViewers
+                    .FirstOrDefaultAsync(rv => rv.RecordId == record.Id && rv.UserId == viewerId);
+                if (viewerRecord != null)
+                {
+                    _context.RecordViewers.Remove(viewerRecord);
+                    await _context.SaveChangesAsync();
+                }
             }
         }
 
@@ -136,6 +206,21 @@ namespace XTHomeManager.API.Services
 
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        public async Task ClearTemporaryPasswordAsync(string userId)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (user != null)
+            {
+                user.PasswordResetTokenExpiry = null;
+                await _context.SaveChangesAsync();
+            }
+        }
+
+        public async Task SaveChangesAsync()
+        {
+            await _context.SaveChangesAsync();
         }
 
         public string GenerateJwtToken(User user)
@@ -173,6 +258,11 @@ namespace XTHomeManager.API.Services
         {
             var computedHash = HashPassword(password);
             return computedHash == hash;
+        }
+
+        public string GetTemporaryPassword()
+        {
+            return GenerateRandomPassword();
         }
 
         private string GenerateRandomPassword()
