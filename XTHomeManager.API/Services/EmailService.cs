@@ -41,7 +41,14 @@ namespace XTHomeManager.API.Services
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
 
-        private async Task<string> LoadTemplateAsync(string templatePath, string name, string inviterName = null, string recordName = null, string tempPassword = null, string resetLink = null)
+        public async Task SendRevokeEmailAsync(string toEmail, string name, string recordName)
+        {
+            var subject = "Your Access to a Record Has Been Revoked";
+            var templatePath = Path.Combine("EmailTemplates", "RevokeEmailTemplate.html");
+            var htmlContent = await LoadTemplateAsync(templatePath, name, recordName: recordName); // Changed recordId to recordName
+            await SendEmailAsync(toEmail, subject, htmlContent);
+        }
+        private async Task<string> LoadTemplateAsync(string templatePath, string name, string inviterName = null, string recordName = null, string tempPassword = null, string resetLink = null, string recordId = null)
         {
             if (!File.Exists(templatePath))
                 throw new FileNotFoundException($"Email template not found at {templatePath}");

@@ -1,6 +1,8 @@
 ﻿// AuthController.cs
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using System.Threading.Tasks;
 using XTHomeManager.API.Models;
@@ -96,32 +98,61 @@ namespace XTHomeManager.API.Controllers
             return Ok("Password has been reset successfully.");
         }
 
+        //[HttpPost("invite")]
+        //public async Task<ActionResult<User>> Invite([FromBody] InviteModel model)
+        //{
+        //    var adminId = User.FindFirst("AdminId")?.Value;
+        //    if (string.IsNullOrEmpty(adminId)) return Unauthorized();
+
+        //    var admin = await _userService.GetUserByIdAsync(adminId);
+        //    if (admin == null) return BadRequest("Admin not found.");
+
+        //    var (user, message) = await _userService.InviteOrUpdateViewerAsync(model.Email, admin.FullName, adminId, model.RecordName);
+        //    if (user == null)
+        //        return BadRequest(message);
+
+        //    await _emailService.SendInviteEmailAsync(user.Email, user.FullName, admin.FullName, model.RecordName, message.Contains("temporary password") ? message.Split("temporary password: ")[1] : null);
+
+        //    return Ok(new { User = user, Message = message });
+        //}
+
         [HttpPost("invite")]
-        public async Task<ActionResult<User>> Invite([FromBody] InviteModel model)
+        [Authorize]
+        public async Task<ActionResult> InviteViewer([FromBody] InviteModel model)
         {
-            var adminId = User.FindFirst("AdminId")?.Value;
-            if (string.IsNullOrEmpty(adminId)) return Unauthorized();
+            var userId = User.FindFirst("id")?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { Message = "User ID not found" });
 
-            var admin = await _userService.GetUserByIdAsync(adminId);
-            if (admin == null) return BadRequest("Admin not found.");
+            var admin = await _userService.GetUserByIdAsync(userId);
+            if (admin == null)
+                return BadRequest(new { Message = "Admin not found" });
 
-            var (user, message) = await _userService.InviteOrUpdateViewerAsync(model.Email, admin.FullName, adminId, model.RecordName);
+            // Use UserService to handle the invite logic
+            var (user, message) = await _userService.InviteOrUpdateViewerAsync(model.Email, admin.FullName, userId, model.RecordName);
             if (user == null)
-                return BadRequest(message);
+                return BadRequest(new { Message = message });
 
             await _emailService.SendInviteEmailAsync(user.Email, user.FullName, admin.FullName, model.RecordName, message.Contains("temporary password") ? message.Split("temporary password: ")[1] : null);
-
-            return Ok(new { User = user, Message = message });
+            return Ok(new { Message = "Invitation sent successfully" });
         }
 
         [HttpPost("revoke")]
+        [Authorize]
         public async Task<ActionResult> RevokeViewer([FromBody] RevokeModel model)
         {
-            var adminId = User.FindFirst("AdminId")?.Value;
-            if (string.IsNullOrEmpty(adminId)) return Unauthorized();
+            var userId = User.FindFirst("id")?.Value; // Use "id" instead of "AdminId" for consistency
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized("User ID not found in token.");
 
-            await _userService.RevokeViewerAccessAsync(model.ViewerId, model.RecordName, model.RecordType);
-            return Ok();
+            await _userService.RevokeViewerAccessAsync(model.ViewerId, model.RecordId);
+            // Fetch viewer email to send notification
+            var viewer = await _userService.GetUserByIdAsync(model.ViewerId);
+            if (viewer != null)
+            {
+                await _emailService.SendRevokeEmailAsync(viewer.Email, viewer.FullName, model.RecordId.ToString());
+            }
+            return Ok(new { Message = "Viewer access revoked successfully" });
         }
 
         [HttpGet("invited-viewers/{adminId}")]

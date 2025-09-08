@@ -29,13 +29,13 @@ namespace XTHomeManager.API.Models
     public class InviteModel
     {
         public string Email { get; set; }
-        public string RecordName { get; set; }
+        public string RecordName { get; set; } // Keep for backward compatibility
+        public int RecordId { get; set; } // New field for specific record linking
     }
 
     public class RevokeModel
     {
         public string ViewerId { get; set; }
-        public string RecordName { get; set; }
-        public string RecordType { get; set; }
+        public int RecordId { get; set; }
     }
 }
