@@ -29,7 +29,7 @@ namespace XTHomeManager.API.Services
         {
             var subject = "Your Password Reset Request";
             var templatePath = Path.Combine("EmailTemplates", "ResetPasswordEmailTemplate.html");
-            var htmlContent = await LoadTemplateAsync(templatePath, name, resetLink);
+            var htmlContent = await LoadTemplateAsync(templatePath, name, resetLink: resetLink);
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
 
@@ -47,8 +47,8 @@ namespace XTHomeManager.API.Services
                 throw new FileNotFoundException($"Email template not found at {templatePath}");
 
             var htmlContent = await File.ReadAllTextAsync(templatePath);
-            htmlContent = htmlContent.Replace("{{name}}", name ?? "User");
-            if (resetLink != null) htmlContent = htmlContent.Replace("{{reset_link}}", resetLink);
+            htmlContent = htmlContent.Replace("{{FullName}}", name ?? "User");
+            if (resetLink != null) htmlContent = htmlContent.Replace("{{ResetLink}}", resetLink);
             if (inviterName != null) htmlContent = htmlContent.Replace("{{inviter_name}}", inviterName);
             if (recordName != null) htmlContent = htmlContent.Replace("{{record_name}}", recordName);
             if (tempPassword != null) htmlContent = htmlContent.Replace("{{temp_password}}", tempPassword);

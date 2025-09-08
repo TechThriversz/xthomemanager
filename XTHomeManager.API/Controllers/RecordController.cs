@@ -1,10 +1,11 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using XTHomeManager.API.Data;
-using XTHomeManager.API.Models;
 using System.Security.Claims;
 using System.Text.Json;
+using XTHomeManager.API.Data;
+using XTHomeManager.API.Models;
+using XTHomeManager.API.Services;
 
 namespace XTHomeManager.API.Controllers
 {
@@ -41,6 +42,26 @@ namespace XTHomeManager.API.Controllers
 
             var allRecords = records.Concat(viewerRecords).Distinct().ToList();
             return Ok(allRecords);
+        }
+        [HttpGet("viewer-records/{userId}")]
+        public async Task<ActionResult<List<RecordDto>>> GetViewerRecords(string userId)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null) return NotFound();
+
+            // Fetch only records where the user is an invited viewer, excluding their own records
+            var records = await _context.Records
+                .Where(r => r.UserId != userId && _context.RecordViewers.Any(rv => rv.RecordId == r.Id && rv.UserId == userId && rv.AllowViewerAccess && rv.IsAccepted))
+                .Select(r => new RecordDto
+                {
+                    Id = r.Id,
+                    Name = r.Name,
+                    Type = r.Type,
+                    IsAccepted = true // Since we filter for IsAccepted, this is redundant but kept for consistency
+                })
+                .ToListAsync();
+
+            return Ok(records);
         }
 
         [HttpPost]

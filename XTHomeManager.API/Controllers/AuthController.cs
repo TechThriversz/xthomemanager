@@ -1,6 +1,7 @@
 ﻿// AuthController.cs
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using System.Threading.Tasks;
 using XTHomeManager.API.Models;
 using XTHomeManager.API.Services;
@@ -13,65 +14,53 @@ namespace XTHomeManager.API.Controllers
     {
         private readonly UserService _userService;
         private readonly EmailService _emailService;
+        private readonly IConfiguration _configuration;
 
-        public AuthController(UserService userService, EmailService emailService)
+        public AuthController(UserService userService, EmailService emailService, IConfiguration configuration)
         {
             _userService = userService ?? throw new ArgumentNullException(nameof(userService));
             _emailService = emailService ?? throw new ArgumentNullException(nameof(emailService));
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         }
 
         [HttpPost("login")]
+        [Microsoft.AspNetCore.Authorization.AllowAnonymous]
         public async Task<ActionResult> Login([FromBody] LoginModel model)
         {
             if (model == null || string.IsNullOrEmpty(model.Email) || string.IsNullOrEmpty(model.Password))
-                return BadRequest(new { Message = "Email and password are required." });
+                return BadRequest("Email and password are required.");
 
             var user = await _userService.LoginAsync(model.Email, model.Password);
             if (user == null)
             {
-                return Unauthorized(new { Message = "Invalid email or password" });
+                return Unauthorized("Invalid email or password");
             }
-            if (user.Role == "Viewer" && user.PasswordResetTokenExpiry.HasValue && user.PasswordResetTokenExpiry.Value > DateTime.UtcNow)
+
+            if (user.PasswordResetTokenExpiry.HasValue && user.PasswordResetTokenExpiry.Value > DateTime.UtcNow)
             {
                 var token = _userService.GenerateJwtToken(user);
-                return Ok(new { Message = "Please change your temporary password.", RequiresPasswordChange = true, Token = token });
+                return Ok(new { Token = token, RequiresPasswordChange = true });
             }
 
             var tokenResult = _userService.GenerateJwtToken(user);
-            return Ok(new { Message = "Login successful", Token = tokenResult, User = new { user.Id, user.Email, user.Role, user.FullName, user.ImagePath } });
+            return Ok(new { Token = tokenResult, User = new { user.Id, user.Email, user.Role, user.FullName, user.ImagePath } });
         }
 
         [HttpPost("register")]
+        [Microsoft.AspNetCore.Authorization.AllowAnonymous]
         public async Task<ActionResult> Register([FromBody] RegisterModel model)
         {
             if (model == null || string.IsNullOrEmpty(model.Email) || string.IsNullOrEmpty(model.FullName) || string.IsNullOrEmpty(model.Password))
-                return BadRequest(new { Message = "All fields are required." });
-
-            var existingUser = await _userService.GetUserByEmailAsync(model.Email);
-            string token;
-
-            if (existingUser != null)
-            {
-                if (existingUser.Role == "Viewer")
-                {
-                    existingUser.FullName = model.FullName;
-                    existingUser.PasswordHash = _userService.HashPassword(model.Password);
-                    await _userService.ClearTemporaryPasswordAsync(existingUser.Id);
-                    await _userService.SaveChangesAsync();
-                    await _emailService.SendWelcomeEmailAsync(existingUser.Email, existingUser.FullName);
-                    token = _userService.GenerateJwtToken(existingUser);
-                    return Ok(new { Message = "Viewer updated successfully", Token = token, User = existingUser });
-                }
-                return BadRequest(new { Message = "User with this email already exists and is not a viewer." });
-            }
+                return BadRequest("All fields are required.");
 
             var user = await _userService.RegisterAsync(model.Email, model.FullName, model.Password);
             if (user == null)
-                return BadRequest(new { Message = "User with this email already exists." });
+                return BadRequest("User with this email already exists.");
 
             await _emailService.SendWelcomeEmailAsync(user.Email, user.FullName);
-            token = _userService.GenerateJwtToken(user);
-            return Ok(new { Message = "Registration successful", Token = token, User = user });
+            var token = _userService.GenerateJwtToken(user);
+
+            return Ok(new { Token = token, User = user });
         }
 
         [HttpPost("forgot-password")]
@@ -83,11 +72,12 @@ namespace XTHomeManager.API.Controllers
             var (user, token) = await _userService.GeneratePasswordResetTokenAsync(model.Email);
             if (user == null || string.IsNullOrEmpty(token))
             {
-                return Ok(new { message = "If an account with that email exists, a password reset link has been sent." });
+                return Ok("If an account with that email exists, a password reset link has been sent.");
             }
 
-            var request = HttpContext.Request;
-            var resetLink = $"{request.Scheme}://{request.Host}/reset-password?token={token}&email={Uri.EscapeDataString(user.Email)}";
+            // Use the configured frontend URL from appsettings.json
+            var frontendBaseUrl = _configuration["Frontend:BaseUrl"] ?? "http://localhost:5173"; // Default to localhost if not set
+            var resetLink = $"{frontendBaseUrl}/reset-password?token={token}&email={Uri.EscapeDataString(user.Email)}";
             await _emailService.SendPasswordResetEmailAsync(user.Email, user.FullName, resetLink);
 
             return Ok(new { message = "If an account with that email exists, a password reset link has been sent." });
@@ -103,39 +93,39 @@ namespace XTHomeManager.API.Controllers
             if (!success)
                 return BadRequest("Invalid token or email. Please try again or request a new reset link.");
 
-            return Ok(new { message = "Password has been reset successfully." });
+            return Ok("Password has been reset successfully.");
         }
 
         [HttpPost("invite")]
-        public async Task<ActionResult<object>> Invite([FromBody] InviteModel model)
+        public async Task<ActionResult<User>> Invite([FromBody] InviteModel model)
         {
             var adminId = User.FindFirst("AdminId")?.Value;
-            if (string.IsNullOrEmpty(adminId)) return Unauthorized(new { Message = "Unauthorized access" });
+            if (string.IsNullOrEmpty(adminId)) return Unauthorized();
 
             var admin = await _userService.GetUserByIdAsync(adminId);
-            if (admin == null) return BadRequest(new { Message = "Admin not found." });
+            if (admin == null) return BadRequest("Admin not found.");
 
-            var tempPassword = _userService.GetTemporaryPassword();
-            var result = await _userService.InviteOrUpdateViewerAsync(model.Email, admin.FullName, adminId, model.RecordName, tempPassword);
-            if (result.Item1 != null)
-            {
-                await _emailService.SendInviteEmailAsync(result.Item1.Email, result.Item1.FullName, admin.FullName, model.RecordName, tempPassword);
-            }
-            return Ok(new { User = result.Item1, Message = result.Item2 });
+            var (user, message) = await _userService.InviteOrUpdateViewerAsync(model.Email, admin.FullName, adminId, model.RecordName);
+            if (user == null)
+                return BadRequest(message);
+
+            await _emailService.SendInviteEmailAsync(user.Email, user.FullName, admin.FullName, model.RecordName, message.Contains("temporary password") ? message.Split("temporary password: ")[1] : null);
+
+            return Ok(new { User = user, Message = message });
         }
 
         [HttpPost("revoke")]
         public async Task<ActionResult> RevokeViewer([FromBody] RevokeModel model)
         {
             var adminId = User.FindFirst("AdminId")?.Value;
-            if (string.IsNullOrEmpty(adminId)) return Unauthorized(new { Message = "Unauthorized access" });
+            if (string.IsNullOrEmpty(adminId)) return Unauthorized();
 
             await _userService.RevokeViewerAccessAsync(model.ViewerId, model.RecordName, model.RecordType);
-            return Ok(new { Message = "Viewer access revoked successfully" });
+            return Ok();
         }
 
         [HttpGet("invited-viewers/{adminId}")]
-        public async Task<ActionResult<List<User>>> GetInvitedViewers(string adminId)
+        public async Task<ActionResult<List<InvitedViewerDto>>> GetInvitedViewers(string adminId)
         {
             var viewers = await _userService.GetInvitedViewersAsync(adminId);
             return Ok(viewers);
