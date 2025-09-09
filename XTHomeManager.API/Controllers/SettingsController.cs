@@ -19,7 +19,7 @@ namespace XTHomeManager.API.Controllers
         [HttpGet]
         public async Task<ActionResult<Settings>> GetSettings()
         {
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
+            var userId = User.FindFirst("id")?.Value; // Use "id" instead of "AdminId" for consistency
             if (string.IsNullOrEmpty(userId))
             {
                 return Unauthorized("User ID not found in token.");
@@ -43,7 +43,7 @@ namespace XTHomeManager.API.Controllers
         [HttpPost]
         public async Task<ActionResult<Settings>> UpdateSettings([FromBody] SettingsUpdateDto settingsDto)
         {
-            var userId = User.FindFirst("AdminId")?.Value ?? User.Identity.Name;
+            var userId = User.FindFirst("id")?.Value; // Use "id" instead of "AdminId" for consistency
             if (string.IsNullOrEmpty(userId))
             {
                 return Unauthorized("User ID not found in token.");

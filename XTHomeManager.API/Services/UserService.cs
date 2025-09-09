@@ -71,24 +71,27 @@ namespace XTHomeManager.API.Services
             }
         }
 
-        public async Task<(User, string)> InviteOrUpdateViewerAsync(string email, string inviterName, string adminId, string recordName)
+        // UserService.cs (Update InviteOrUpdateViewerAsync)
+        public async Task<(User, string)> InviteOrUpdateViewerAsync(string email, string inviterName, string adminId, string recordName, int? recordId = null)
         {
-            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
-            var adminRecord = await _context.Records.FirstOrDefaultAsync(r => r.Name == recordName && r.UserId == adminId);
+            var adminRecord = recordId.HasValue
+                ? await _context.Records.FirstOrDefaultAsync(r => r.Id == recordId.Value && r.UserId == adminId)
+                : await _context.Records.FirstOrDefaultAsync(r => r.Name == recordName && r.UserId == adminId);
 
             if (adminRecord == null) return (null, "Record not found for this admin.");
 
+            var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
             if (existingUser != null)
             {
                 var existingViewer = await _context.RecordViewers
                     .FirstOrDefaultAsync(rv => rv.RecordId == adminRecord.Id && rv.UserId == existingUser.Id);
                 if (existingViewer != null)
                 {
-                    return (null, $"User already viewer in this record: {recordName}");
+                    return (null, $"User already viewer in this record: {adminRecord.Name}");
                 }
                 _context.RecordViewers.Add(new RecordViewer { RecordId = adminRecord.Id, UserId = existingUser.Id, AllowViewerAccess = true, IsAccepted = false });
                 await _context.SaveChangesAsync();
-                return (existingUser, $"User {email} added as viewer for {recordName}. Notification sent.");
+                return (existingUser, $"User {email} added as viewer for {adminRecord.Name}. Notification sent.");
             }
 
             var tempPassword = GenerateRandomPassword();
@@ -107,7 +110,7 @@ namespace XTHomeManager.API.Services
             _context.RecordViewers.Add(new RecordViewer { RecordId = adminRecord.Id, UserId = newUser.Id, AllowViewerAccess = true, IsAccepted = false });
             await _context.SaveChangesAsync();
 
-            return (newUser, $"New user {email} invited as viewer for {recordName} with temporary password: {tempPassword}");
+            return (newUser, $"New user {email} invited as viewer for {adminRecord.Name} with temporary password: {tempPassword}");
         }
 
         public async Task<List<InvitedViewerDto>> GetInvitedViewersAsync(string adminId)
@@ -135,23 +138,22 @@ namespace XTHomeManager.API.Services
                 .ToListAsync();
         }
 
-        public async Task RevokeViewerAccessAsync(string viewerId, string recordName, string recordType)
+        public async Task RevokeViewerAccessAsync(string viewerId, int recordId)
         {
-            if (string.IsNullOrEmpty(viewerId) || string.IsNullOrEmpty(recordName) || string.IsNullOrEmpty(recordType))
-                throw new ArgumentNullException("ViewerId, recordName, and recordType are required.");
+            if (string.IsNullOrEmpty(viewerId) || recordId <= 0)
+                throw new ArgumentNullException("ViewerId and recordId are required.");
 
-            var record = await _context.Records.FirstOrDefaultAsync(r => r.Name == recordName && r.Type == recordType && r.UserId == viewerId);
-            if (record != null)
-            {
-                var viewerRecord = await _context.RecordViewers
-                    .FirstOrDefaultAsync(rv => rv.RecordId == record.Id && rv.UserId == viewerId);
-                if (viewerRecord != null)
-                {
-                    _context.RecordViewers.Remove(viewerRecord);
-                    await _context.SaveChangesAsync();
-                }
-            }
+            var viewerRecord = await _context.RecordViewers
+                .FirstOrDefaultAsync(rv => rv.UserId == viewerId && rv.RecordId == recordId);
+
+            if (viewerRecord == null)
+                throw new Exception("Viewer access not found for the specified record.");
+
+            // Set AllowViewerAccess to false instead of deleting
+            viewerRecord.AllowViewerAccess = false;
+            await _context.SaveChangesAsync();
         }
+       
 
         public async Task<(User, string)> GeneratePasswordResetTokenAsync(string email)
         {

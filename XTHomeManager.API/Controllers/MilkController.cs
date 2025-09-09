@@ -73,7 +73,7 @@ namespace XTHomeManager.API.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "Admin")]
+        [Authorize]
         public async Task<ActionResult<MilkEntry>> CreateMilkEntry([FromBody] MilkEntry entry)
         {
             try
@@ -98,8 +98,11 @@ namespace XTHomeManager.API.Controllers
                     return BadRequest("Invalid Record ID");
                 }
 
-                var settings = await _context.Settings.FirstOrDefaultAsync();
+                // Get the authenticated user's settings
+                var userId = User.FindFirst("id")?.Value;
+                var settings = await _context.Settings.FirstOrDefaultAsync(s => s.UserId == userId);
                 var milkRatePerLiter = settings?.MilkRatePerLiter ?? 0m;
+
                 entry.TotalCost = entry.QuantityLiters * milkRatePerLiter;
 
                 _context.MilkEntries.Add(entry);
