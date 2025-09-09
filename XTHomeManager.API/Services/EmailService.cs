@@ -29,7 +29,7 @@ namespace XTHomeManager.API.Services
         {
             var subject = "Your Password Reset Request";
             var templatePath = Path.Combine("EmailTemplates", "ResetPasswordEmailTemplate.html");
-            var htmlContent = await LoadTemplateAsync(templatePath, name, resetLink);
+            var htmlContent = await LoadTemplateAsync(templatePath, name, resetLink: resetLink);
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
 
@@ -41,14 +41,21 @@ namespace XTHomeManager.API.Services
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
 
-        private async Task<string> LoadTemplateAsync(string templatePath, string name, string inviterName = null, string recordName = null, string tempPassword = null, string resetLink = null)
+        public async Task SendRevokeEmailAsync(string toEmail, string name, string recordName)
+        {
+            var subject = "Your Access to a Record Has Been Revoked";
+            var templatePath = Path.Combine("EmailTemplates", "RevokeEmailTemplate.html");
+            var htmlContent = await LoadTemplateAsync(templatePath, name, recordName: recordName); // Changed recordId to recordName
+            await SendEmailAsync(toEmail, subject, htmlContent);
+        }
+        private async Task<string> LoadTemplateAsync(string templatePath, string name, string inviterName = null, string recordName = null, string tempPassword = null, string resetLink = null, string recordId = null)
         {
             if (!File.Exists(templatePath))
                 throw new FileNotFoundException($"Email template not found at {templatePath}");
 
             var htmlContent = await File.ReadAllTextAsync(templatePath);
-            htmlContent = htmlContent.Replace("{{name}}", name ?? "User");
-            if (resetLink != null) htmlContent = htmlContent.Replace("{{reset_link}}", resetLink);
+            htmlContent = htmlContent.Replace("{{FullName}}", name ?? "User");
+            if (resetLink != null) htmlContent = htmlContent.Replace("{{ResetLink}}", resetLink);
             if (inviterName != null) htmlContent = htmlContent.Replace("{{inviter_name}}", inviterName);
             if (recordName != null) htmlContent = htmlContent.Replace("{{record_name}}", recordName);
             if (tempPassword != null) htmlContent = htmlContent.Replace("{{temp_password}}", tempPassword);
