@@ -129,7 +129,7 @@ namespace XTHomeManager.API.Controllers
                 return BadRequest(new { Message = "Admin not found" });
 
             // Use UserService to handle the invite logic
-            var (user, message) = await _userService.InviteOrUpdateViewerAsync(model.Email, admin.FullName, userId, model.RecordName);
+            var (user, message) = await _userService.InviteOrUpdateViewerAsync(model.Email, admin.FullName, userId, model.RecordName, model.RecordId);
             if (user == null)
                 return BadRequest(new { Message = message });
 

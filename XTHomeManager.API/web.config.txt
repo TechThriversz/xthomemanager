@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <location path="." inheritInChildApplications="false">
+    <system.webServer>
+      <!-- Handler for ASP.NET Core -->
+      <handlers>
+        <add name="aspNetCore" path="*" verb="*" modules="AspNetCoreModuleV2" resourceType="Unspecified" />
+      </handlers>
+      <aspNetCore processPath="dotnet" arguments=".\XTHomeManager.API.dll" stdoutLogEnabled="false" stdoutLogFile=".\logs\stdout" hostingModel="inprocess" />
+
+      <!-- Static CORS Headers -->
+      <httpProtocol>
+        <customHeaders>
+          <!-- Allow Vercel frontend -->
+          <add name="Access-Control-Allow-Origin" value="https://xthomemanager.vercel.app" />
+
+          <!-- Common CORS headers -->
+          <add name="Access-Control-Allow-Headers" value="Content-Type, Authorization, X-Requested-With" />
+          <add name="Access-Control-Allow-Methods" value="GET, POST, PUT, DELETE, OPTIONS" />
+          <add name="Access-Control-Allow-Credentials" value="true" />
+        </customHeaders>
+      </httpProtocol>
+
+      <!-- Rewrite rule for OPTIONS requests -->
+      <rewrite>
+        <rules>
+          <rule name="CORS Preflight" stopProcessing="true">
+            <match url=".*" />
+            <conditions>
+              <add input="{REQUEST_METHOD}" pattern="^OPTIONS$" />
+            </conditions>
+            <action type="CustomResponse" statusCode="200" statusReason="OK" statusDescription="OK" />
+          </rule>
+        </rules>
+      </rewrite>
+    </system.webServer>
+  </location>
+</configuration>
