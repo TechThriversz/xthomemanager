@@ -37,8 +37,68 @@ namespace XTHomeManager.API.Services
         {
             var subject = "You’ve Been Invited to View a Record on XT Home Manager";
             var templatePath = Path.Combine("EmailTemplates", "InviteEmailTemplate.html");
-            var htmlContent = await LoadTemplateAsync(templatePath, name, inviterName, recordName, tempPassword);
+
+            var htmlContent = await LoadTemplateInviteAsync(
+                templatePath,
+                name,
+                inviterName,
+                recordName,
+                tempPassword
+            );
+
             await SendEmailAsync(toEmail, subject, htmlContent);
+        }
+
+        private async Task<string> LoadTemplateInviteAsync(
+    string templatePath,
+    string name,
+    string inviterName = null,
+    string recordName = null,
+    string tempPassword = null)
+        {
+            // Fix path for production
+            var basePath = AppDomain.CurrentDomain.BaseDirectory;
+            var fullPath = Path.Combine(basePath, templatePath);
+
+            if (!File.Exists(fullPath))
+            {
+                // Fallback: inline HTML (prevents 500)
+                return $@"
+            <h2>Hello {name},</h2>
+            <p><strong>{inviterName}</strong> invited you to view <strong>{recordName}</strong>.</p>
+            {(tempPassword != null ? $"<p><strong>Temp Password:</strong> <code>{tempPassword}</code></p>" : "<p>Log in to accept.</p>")}
+            <a href='https://xthomemanager.vercel.app'>Open App</a>
+        ";
+            }
+
+            var html = await File.ReadAllTextAsync(fullPath);
+
+            // Replace known placeholders
+            html = html
+                .Replace("{{Name}}", name ?? "User")
+                .Replace("{{InviterName}}", inviterName ?? "Someone")
+                .Replace("{{RecordName}}", recordName ?? "a record")
+                .Replace("{{TempPassword}}", tempPassword ?? "");
+
+            // Handle conditional block
+            if (tempPassword != null)
+            {
+                html = html.Replace("{{#if IsNewUser}}", "").Replace("{{/if}}", "");
+                html = html.Replace("{{else}}", ""); // Remove else part
+            }
+            else
+            {
+                // Remove entire {{#if}} block
+                var ifBlock = html.Split(new[] { "{{#if IsNewUser}}" }, StringSplitOptions.None)[1]
+                                  .Split(new[] { "{{/if}}" }, StringSplitOptions.None)[0];
+                var elseBlock = ifBlock.Split(new[] { "{{else}}" }, StringSplitOptions.None);
+                var newUserBlock = elseBlock[0];
+                var existingUserBlock = elseBlock.Length > 1 ? elseBlock[1] : "";
+
+                html = html.Replace("{{#if IsNewUser}}" + ifBlock + "{{/if}}", existingUserBlock);
+            }
+
+            return html;
         }
 
         public async Task SendRevokeEmailAsync(string toEmail, string name, string recordName)

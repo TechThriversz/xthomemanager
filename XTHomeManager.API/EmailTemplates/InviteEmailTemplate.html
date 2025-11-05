@@ -1,12 +1,26 @@
 ﻿<!DOCTYPE html>
 <html>
 <head>
-    <title>Invitation to View Record</title>
+    <meta charset="utf-8" />
+    <title>You're Invited!</title>
 </head>
-<body>
-    <h1>Hello {{FullName}},</h1>
-    <p>You have been invited by <b>{{inviter_name}}</b> to view the record "{{record_name}}" on XT Home Manager.</p>
-    <p>Your temporary password is <b>{{temp_password}}</b>. It will expire in 24 hours. Please log in at <a style="color:#032563; font-weight:bold;" href="https://xthomemanager.vercel.app/login">XTHOMEMANAGER</a> and change it immediately.</p>
-    <p>Thank you,<br>The XT Home Manager Team</p>
+<body style="font-family: Arial, sans-serif; color: #333;">
+    <h2>Hello {{Name}},</h2>
+    <p><strong>{{InviterName}}</strong> has invited you to view the record:</p>
+    <h3 style="color: #1A2A44;">{{RecordName}}</h3>
+
+    {{#if IsNewUser}}
+    <div style="background: #FFF6F5; padding: 15px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Your temporary password:</strong></p>
+        <p style="font-size: 18px; font-weight: bold; color: #D9534F;">{{TempPassword}}</p>
+        <p><em>Please change it after logging in.</em></p>
+    </div>
+    {{else}}
+    <p>You already have an account. Log in to accept the invite.</p>
+    {{/if}}
+
+    <a href="https://xthomemanager.vercel.app" style="background: #1A2A44; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; margin-top: 20px;">
+        Open App
+    </a>
 </body>
 </html>

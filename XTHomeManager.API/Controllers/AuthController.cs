@@ -122,19 +122,35 @@ namespace XTHomeManager.API.Controllers
         {
             var userId = User.FindFirst("id")?.Value;
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new { Message = "User ID not found" });
+                return Unauthorized(new { Message = "Invalid token." });
 
             var admin = await _userService.GetUserByIdAsync(userId);
             if (admin == null)
-                return BadRequest(new { Message = "Admin not found" });
+                return NotFound(new { Message = "Admin not found." });
 
-            // Use UserService to handle the invite logic
-            var (user, message) = await _userService.InviteOrUpdateViewerAsync(model.Email, admin.FullName, userId, model.RecordName, model.RecordId);
+            var (user, message) = await _userService.InviteOrUpdateViewerAsync(
+                model.Email, admin.FullName, userId, model.RecordName, model.RecordId);
+
             if (user == null)
                 return BadRequest(new { Message = message });
 
-            await _emailService.SendInviteEmailAsync(user.Email, user.FullName, admin.FullName, model.RecordName, message.Contains("temporary password") ? message.Split("temporary password: ")[1] : null);
-            return Ok(new { Message = "Invitation sent successfully" });
+            var isNewUser = message.Contains("temporary password");
+            var tempPassword = isNewUser ? message.Split("temporary password: ")[1] : null;
+
+            await _emailService.SendInviteEmailAsync(
+                user.Email,
+                user.FullName ?? user.Email.Split('@')[0],
+                admin.FullName,
+                model.RecordName,
+                tempPassword
+            );
+
+            return Ok(new
+            {
+                Message = isNewUser
+                    ? "New viewer invited. Temporary password sent."
+                    : $"Viewer {model.Email} added. They can now accept the invite."
+            });
         }
 
         [HttpPost("revoke")]

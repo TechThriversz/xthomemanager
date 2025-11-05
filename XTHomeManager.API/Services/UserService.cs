@@ -72,28 +72,38 @@ namespace XTHomeManager.API.Services
         }
 
         // UserService.cs (Update InviteOrUpdateViewerAsync)
-        public async Task<(User, string)> InviteOrUpdateViewerAsync(string email, string inviterName, string adminId, string recordName, int? recordId = null)
+        public async Task<(User, string)> InviteOrUpdateViewerAsync(
+     string email, string inviterName, string adminId, string recordName, int? recordId = null)
         {
             var adminRecord = recordId.HasValue
                 ? await _context.Records.FirstOrDefaultAsync(r => r.Id == recordId.Value && r.UserId == adminId)
                 : await _context.Records.FirstOrDefaultAsync(r => r.Name == recordName && r.UserId == adminId);
 
-            if (adminRecord == null) return (null, "Record not found for this admin.");
+            if (adminRecord == null)
+                return (null, "Record not found or you don't own it.");
 
             var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
             if (existingUser != null)
             {
                 var existingViewer = await _context.RecordViewers
                     .FirstOrDefaultAsync(rv => rv.RecordId == adminRecord.Id && rv.UserId == existingUser.Id);
+
                 if (existingViewer != null)
+                    return (null, $"User is already a viewer for '{adminRecord.Name}'.");
+
+                _context.RecordViewers.Add(new RecordViewer
                 {
-                    return (null, $"User already viewer in this record: {adminRecord.Name}");
-                }
-                _context.RecordViewers.Add(new RecordViewer { RecordId = adminRecord.Id, UserId = existingUser.Id, AllowViewerAccess = true, IsAccepted = false });
+                    RecordId = adminRecord.Id,
+                    UserId = existingUser.Id,
+                    AllowViewerAccess = true,
+                    IsAccepted = false
+                });
                 await _context.SaveChangesAsync();
-                return (existingUser, $"User {email} added as viewer for {adminRecord.Name}. Notification sent.");
+
+                return (existingUser, $"Existing user {email} added as viewer. No password needed.");
             }
 
+            // New user
             var tempPassword = GenerateRandomPassword();
             var newUser = new User
             {
@@ -104,13 +114,20 @@ namespace XTHomeManager.API.Services
                 AdminId = adminId,
                 PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(24)
             };
+
             _context.Users.Add(newUser);
             await _context.SaveChangesAsync();
 
-            _context.RecordViewers.Add(new RecordViewer { RecordId = adminRecord.Id, UserId = newUser.Id, AllowViewerAccess = true, IsAccepted = false });
+            _context.RecordViewers.Add(new RecordViewer
+            {
+                RecordId = adminRecord.Id,
+                UserId = newUser.Id,
+                AllowViewerAccess = true,
+                IsAccepted = false
+            });
             await _context.SaveChangesAsync();
 
-            return (newUser, $"New user {email} invited as viewer for {adminRecord.Name} with temporary password: {tempPassword}");
+            return (newUser, $"New user invited with temporary password: {tempPassword}");
         }
 
         public async Task<List<InvitedViewerDto>> GetInvitedViewersAsync(string adminId)
