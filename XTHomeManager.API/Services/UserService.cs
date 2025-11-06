@@ -31,7 +31,7 @@ namespace XTHomeManager.API.Services
             return await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
         }
 
-        public async Task<User> RegisterAsync(string email, string fullName, string password, string role = "Admin")
+        public async Task<User> RegisterAsync(string email, string fullName, string password)
         {
             if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(fullName) || string.IsNullOrEmpty(password))
                 throw new ArgumentNullException("Email, full name, and password are required.");
@@ -44,13 +44,12 @@ namespace XTHomeManager.API.Services
                 Email = email,
                 FullName = fullName,
                 PasswordHash = HashPassword(password),
-                Role = role
+                Role = "User" // Changed to "User"
             };
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
             return user;
         }
-
         public async Task<User> LoginAsync(string email, string password)
         {
             try
@@ -70,10 +69,7 @@ namespace XTHomeManager.API.Services
                 return null;
             }
         }
-
-        // UserService.cs (Update InviteOrUpdateViewerAsync)
-        public async Task<(User, string)> InviteOrUpdateViewerAsync(
-     string email, string inviterName, string adminId, string recordName, int? recordId = null)
+        public async Task<(User, string)> InviteOrUpdateViewerAsync(string email, string inviterName, string adminId, string recordName, int? recordId = null)
         {
             var adminRecord = recordId.HasValue
                 ? await _context.Records.FirstOrDefaultAsync(r => r.Id == recordId.Value && r.UserId == adminId)
@@ -85,11 +81,10 @@ namespace XTHomeManager.API.Services
             var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
             if (existingUser != null)
             {
-                var existingViewer = await _context.RecordViewers
-                    .FirstOrDefaultAsync(rv => rv.RecordId == adminRecord.Id && rv.UserId == existingUser.Id);
+                var already = await _context.RecordViewers
+                    .AnyAsync(rv => rv.RecordId == adminRecord.Id && rv.UserId == existingUser.Id);
 
-                if (existingViewer != null)
-                    return (null, $"User is already a viewer for '{adminRecord.Name}'.");
+                if (already) return (null, "Already invited.");
 
                 _context.RecordViewers.Add(new RecordViewer
                 {
@@ -100,7 +95,7 @@ namespace XTHomeManager.API.Services
                 });
                 await _context.SaveChangesAsync();
 
-                return (existingUser, $"Existing user {email} added as viewer. No password needed.");
+                return (existingUser, "Existing user added as viewer.");
             }
 
             // New user
@@ -110,7 +105,7 @@ namespace XTHomeManager.API.Services
                 Email = email,
                 FullName = email.Split('@')[0],
                 PasswordHash = HashPassword(tempPassword),
-                Role = "Viewer",
+                Role = "User", // Changed to "User"
                 AdminId = adminId,
                 PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(24)
             };
@@ -132,25 +127,29 @@ namespace XTHomeManager.API.Services
 
         public async Task<List<InvitedViewerDto>> GetInvitedViewersAsync(string adminId)
         {
-            return await _context.Users
-                .Where(u => u.AdminId == adminId && u.Role == "Viewer")
-                .Select(u => new InvitedViewerDto
+            return await _context.RecordViewers
+                .Where(rv => rv.Record.UserId == adminId && rv.AllowViewerAccess)
+                .GroupBy(rv => rv.UserId)
+                .Select(g => new InvitedViewerDto
                 {
-                    Id = u.Id,
-                    Email = u.Email,
-                    FullName = u.FullName,
-                    Role = u.Role,
-                    Records = _context.RecordViewers
-                        .Where(rv => rv.UserId == u.Id && rv.Record.UserId == adminId)
-                        .Select(rv => new RecordDto
-                        {
-                            Id = rv.Record.Id,
-                            Name = rv.Record.Name,
-                            Type = rv.Record.Type,
-                            Accepted = rv.AllowViewerAccess,
-                            IsAccepted = rv.IsAccepted
-                        })
-                        .ToList()
+                    Id = g.Key,
+                    Email = g.First().User.Email,
+                    FullName = g.Select(rv => rv.User.FullName).FirstOrDefault() ??
+           (
+               // Avoid null-propagation and optional arguments in expression tree
+               (g.Select(rv => rv.User.Email).FirstOrDefault() != null
+                   ? g.Select(rv => rv.User.Email).FirstOrDefault().Split(new[] { '@' }, StringSplitOptions.None)[0]
+                   : "Unknown")
+           ),
+                    Role = "User", // "User" now
+                    Records = g.Select(rv => new RecordDto
+                    {
+                        Id = rv.Record.Id,
+                        Name = rv.Record.Name,
+                        Type = rv.Record.Type,
+                        Accepted = rv.AllowViewerAccess,
+                        IsAccepted = rv.IsAccepted
+                    }).ToList()
                 })
                 .ToListAsync();
         }
@@ -260,14 +259,14 @@ namespace XTHomeManager.API.Services
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        internal string HashPassword(string password)
+        public string HashPassword(string password)
         {
             using var sha256 = SHA256.Create();
             var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
             return Convert.ToBase64String(bytes);
         }
 
-        private bool VerifyPassword(string password, string hash)
+        public bool VerifyPassword(string password, string hash)
         {
             var computedHash = HashPassword(password);
             return computedHash == hash;

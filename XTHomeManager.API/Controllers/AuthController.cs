@@ -1,6 +1,5 @@
 ﻿// AuthController.cs
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -26,30 +25,24 @@ namespace XTHomeManager.API.Controllers
         }
 
         [HttpPost("login")]
-        [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+        [AllowAnonymous]
         public async Task<ActionResult> Login([FromBody] LoginModel model)
         {
             if (model == null || string.IsNullOrEmpty(model.Email) || string.IsNullOrEmpty(model.Password))
                 return BadRequest("Email and password are required.");
 
-            var user = await _userService.LoginAsync(model.Email, model.Password);
-            if (user == null)
+            var user = await _userService.GetUserByEmailAsync(model.Email);
+            if (user == null || !_userService.VerifyPassword(model.Password, user.PasswordHash))
             {
                 return Unauthorized("Invalid email or password");
             }
 
-            if (user.PasswordResetTokenExpiry.HasValue && user.PasswordResetTokenExpiry.Value > DateTime.UtcNow)
-            {
-                var token = _userService.GenerateJwtToken(user);
-                return Ok(new { Token = token, RequiresPasswordChange = true });
-            }
-
-            var tokenResult = _userService.GenerateJwtToken(user);
-            return Ok(new { Token = tokenResult, User = new { user.Id, user.Email, user.Role, user.FullName, user.ImagePath } });
+            var token = _userService.GenerateJwtToken(user);
+            return Ok(new { Token = token, User = new { user.Id, user.Email, user.FullName, user.ImagePath } });
         }
 
         [HttpPost("register")]
-        [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+        [AllowAnonymous]
         public async Task<ActionResult> Register([FromBody] RegisterModel model)
         {
             if (model == null || string.IsNullOrEmpty(model.Email) || string.IsNullOrEmpty(model.FullName) || string.IsNullOrEmpty(model.Password))
@@ -60,9 +53,9 @@ namespace XTHomeManager.API.Controllers
                 return BadRequest("User with this email already exists.");
 
             await _emailService.SendWelcomeEmailAsync(user.Email, user.FullName);
-            var token = _userService.GenerateJwtToken(user);
 
-            return Ok(new { Token = token, User = user });
+            var token = _userService.GenerateJwtToken(user);
+            return Ok(new { Token = token, User = new { user.Id, user.Email, user.FullName, user.ImagePath } });
         }
 
         [HttpPost("forgot-password")]
@@ -77,12 +70,21 @@ namespace XTHomeManager.API.Controllers
                 return Ok("If an account with that email exists, a password reset link has been sent.");
             }
 
-            // Use the configured frontend URL from appsettings.json
-            var frontendBaseUrl = _configuration["Frontend:BaseUrl"] ?? "http://localhost:5173"; // Default to localhost if not set
+            var frontendBaseUrl = _configuration["Frontend:BaseUrl"] ?? "http://localhost:5173";
             var resetLink = $"{frontendBaseUrl}/reset-password?token={token}&email={Uri.EscapeDataString(user.Email)}";
-            await _emailService.SendPasswordResetEmailAsync(user.Email, user.FullName, resetLink);
 
-            return Ok(new { message = "If an account with that email exists, a password reset link has been sent." });
+            try
+            {
+                await _emailService.SendPasswordResetEmailAsync(user.Email, user.FullName, resetLink);
+            }
+            catch (Exception ex)
+            {
+                // Log the error but don't expose it to the user
+                Console.WriteLine($"Failed to send reset email: {ex.Message}");
+                return StatusCode(500, "An error occurred while sending the reset email. Please try again.");
+            }
+
+            return Ok("If an account with that email exists, a password reset link has been sent.");
         }
 
         [HttpPost("reset-password")]
@@ -97,24 +99,6 @@ namespace XTHomeManager.API.Controllers
 
             return Ok("Password has been reset successfully.");
         }
-
-        //[HttpPost("invite")]
-        //public async Task<ActionResult<User>> Invite([FromBody] InviteModel model)
-        //{
-        //    var adminId = User.FindFirst("AdminId")?.Value;
-        //    if (string.IsNullOrEmpty(adminId)) return Unauthorized();
-
-        //    var admin = await _userService.GetUserByIdAsync(adminId);
-        //    if (admin == null) return BadRequest("Admin not found.");
-
-        //    var (user, message) = await _userService.InviteOrUpdateViewerAsync(model.Email, admin.FullName, adminId, model.RecordName);
-        //    if (user == null)
-        //        return BadRequest(message);
-
-        //    await _emailService.SendInviteEmailAsync(user.Email, user.FullName, admin.FullName, model.RecordName, message.Contains("temporary password") ? message.Split("temporary password: ")[1] : null);
-
-        //    return Ok(new { User = user, Message = message });
-        //}
 
         [HttpPost("invite")]
         [Authorize]
@@ -157,7 +141,7 @@ namespace XTHomeManager.API.Controllers
         [Authorize]
         public async Task<ActionResult> RevokeViewer([FromBody] RevokeModel model)
         {
-            var userId = User.FindFirst("id")?.Value; // Use "id" instead of "AdminId" for consistency
+            var userId = User.FindFirst("id")?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized("User ID not found in token.");
 

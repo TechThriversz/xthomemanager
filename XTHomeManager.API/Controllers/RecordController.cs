@@ -38,24 +38,26 @@ namespace XTHomeManager.API.Controllers
             return Ok(records);
         }
         [HttpGet("viewer-records/{userId}")]
-        public async Task<ActionResult<List<RecordDto>>> GetViewerRecords(string userId)
+        [Authorize]
+        public async Task<ActionResult<IEnumerable<SharedRecordDto>>> GetViewerRecords(string userId)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
-            if (user == null) return NotFound();
+            var authUserId = User.FindFirst("id")?.Value;
+            if (authUserId != userId)
+                return Forbid();
 
-            // Fetch only records where the user is an invited viewer, excluding their own records
-            var records = await _context.Records
-                .Where(r => r.UserId != userId && _context.RecordViewers.Any(rv => rv.RecordId == r.Id && rv.UserId == userId && rv.AllowViewerAccess && rv.IsAccepted))
-                .Select(r => new RecordDto
+            var viewerRecords = await _context.RecordViewers
+                .Where(rv => rv.UserId == userId && rv.AllowViewerAccess)
+                .Select(rv => new SharedRecordDto
                 {
-                    Id = r.Id,
-                    Name = r.Name,
-                    Type = r.Type,
-                    IsAccepted = true // Since we filter for IsAccepted, this is redundant but kept for consistency
+                    Id = rv.Record.Id,
+                    Name = rv.Record.Name,
+                    Type = rv.Record.Type,
+                    OwnerName = rv.Record.User.FullName ?? rv.Record.User.Email,
+                    IsAccepted = rv.IsAccepted
                 })
                 .ToListAsync();
 
-            return Ok(records);
+            return Ok(viewerRecords);
         }
 
         [HttpPost]
@@ -103,72 +105,120 @@ namespace XTHomeManager.API.Controllers
                 return StatusCode(500, new { Message = "An error occurred while creating the record: " + ex.Message });
             }
         }
-        // RecordController.cs (Updated GetRecordDetails)
         [HttpGet("details/{recordId}")]
         [Authorize]
         public async Task<ActionResult<RecordDetailsDto>> GetRecordDetails(int recordId)
         {
             var userId = User.FindFirst("id")?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new { Message = "User ID not found" });
-
             var record = await _context.Records
-                .Include(r => r.Viewers)
+                .Include(r => r.User)
                 .FirstOrDefaultAsync(r => r.Id == recordId);
 
             if (record == null)
-                return NotFound(new { Message = "Record not found" });
+                return NotFound();
 
-            // Check if user is the owner or an invited viewer
-            var isOwner = record.UserId == userId;
-            var isViewer = record.Viewers != null && record.Viewers.Any(rv => rv.UserId == userId && rv.AllowViewerAccess && rv.IsAccepted);
+            // Check if owner or viewer
+            if (record.UserId != userId)
+            {
+                var isViewer = await _context.RecordViewers
+                    .AnyAsync(rv => rv.RecordId == recordId && rv.UserId == userId && rv.AllowViewerAccess);
+                if (!isViewer) return Forbid();
+            }
 
-            if (!isOwner && !isViewer)
-                return Unauthorized(new { Message = "Access denied" });
-
-            // Fetch the creator's full name
-            var creator = await _context.Users.FirstOrDefaultAsync(u => u.Id == record.UserId);
-            var creatorName = creator?.FullName ?? "Unknown";
-
-            var details = new RecordDetailsDto
+            var details = new RecordDetailsInvitedDto
             {
                 Id = record.Id,
                 Name = record.Name,
                 Type = record.Type,
-                CreatedBy = creatorName, // Updated to use FullName instead of UserId
-                Viewers = record.Viewers != null
-                    ? record.Viewers
-                        .Where(rv => rv.AllowViewerAccess && rv.IsAccepted)
-                        .Select(rv => new ViewerDto { UserId = rv.UserId, Email = _context.Users.FirstOrDefault(u => u.Id == rv.UserId)?.Email })
-                        .ToList()
-                    : new List<ViewerDto>()
+                CreatedBy = record.User.FullName ?? record.User.Email,
+                Entries = await GetEntriesForType(record.Type, recordId)
             };
-
-            // Add entries based on record type with explicit casting
-            switch (record.Type.ToLower())
-            {
-                case "milk":
-                    details.Entries = (await _context.MilkEntries
-                        .Where(m => m.RecordId == recordId)
-                        .ToListAsync()).Cast<object>().ToList();
-                    break;
-                case "bill":
-                    details.Entries = (await _context.ElectricityBills
-                        .Where(b => b.RecordId == recordId)
-                        .ToListAsync()).Cast<object>().ToList();
-                    break;
-                case "rent":
-                    details.Entries = (await _context.RentEntries
-                        .Where(r => r.RecordId == recordId)
-                        .ToListAsync()).Cast<object>().ToList();
-                    break;
-                default:
-                    details.Entries = new List<object>(); // Empty list for unsupported types
-                    break;
-            }
 
             return Ok(details);
         }
+
+        private async Task<List<EntryDto>> GetEntriesForType(string type, int recordId)
+        {
+            switch (type)
+            {
+                case "Milk":
+                    return await _context.MilkEntries
+                        .Where(e => e.RecordId == recordId)
+                        .Select(e => new EntryDto
+                        {
+                            Date = e.Date,
+                            QuantityLiters = e.QuantityLiters,
+                            Status = e.Status,
+                            TotalCost = e.TotalCost
+                        })
+                        .ToListAsync();
+
+                case "Rent":
+                    return await _context.RentEntries
+                        .Where(e => e.RecordId == recordId)
+                        .Select(e => new EntryDto
+                        {
+                            Month = e.Month,
+                            Amount = e.Amount,
+                            Status = e.Status
+                        })
+                        .ToListAsync();
+
+                case "Bill":
+                    return await _context.ElectricityBills
+                        .Where(e => e.RecordId == recordId)
+                        .Select(e => new EntryDto
+                        {
+                            Month = e.Month,
+                            Amount = e.Amount,
+                            ReferenceNumber = e.ReferenceNumber,
+                            FilePath = e.FilePath
+                        })
+                        .ToListAsync();
+
+                default:
+                    return new List<EntryDto>();
+            }
+        }
+
+        [HttpPost("accept-invite/{recordId}")]
+        [Authorize]
+        public async Task<ActionResult> AcceptInvite(int recordId)
+        {
+            var userId = User.FindFirst("id")?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            var rv = await _context.RecordViewers
+                .FirstOrDefaultAsync(x => x.RecordId == recordId && x.UserId == userId);
+
+            if (rv == null) return NotFound("Invite not found");
+            if (!rv.AllowViewerAccess) return Forbid();
+
+            rv.IsAccepted = true;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { Message = "Invite accepted!" });
+        }
+
+        [HttpPost("decline-invite/{recordId}")]
+        [Authorize]
+        public async Task<ActionResult> DeclineInvite(int recordId)
+        {
+            var userId = User.FindFirst("id")?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            var rv = await _context.RecordViewers
+                .FirstOrDefaultAsync(x => x.RecordId == recordId && x.UserId == userId);
+
+            if (rv == null) return NotFound();
+            if (!rv.AllowViewerAccess) return Forbid();
+
+            rv.AllowViewerAccess = false;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { Message = "Invite declined." });
+        }
+
 
         [HttpDelete("{id}")]
         [Authorize]
