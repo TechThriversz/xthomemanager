@@ -107,6 +107,7 @@ namespace XTHomeManager.API.Services
                 PasswordHash = HashPassword(tempPassword),
                 Role = "User", // Changed to "User"
                 AdminId = adminId,
+                IsActive = true,
                 PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(24)
             };
 
@@ -238,13 +239,14 @@ namespace XTHomeManager.API.Services
         public string GenerateJwtToken(User user)
         {
             var claims = new List<Claim>
-            {
+    {
                 new Claim("id", user.Id),
-                new Claim(JwtRegisteredClaimNames.Sub, user.Email),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                new Claim(ClaimTypes.Role, user.Role),
-                new Claim("AdminId", user.AdminId ?? user.Id)
-            };
+        //new Claim(ClaimTypes.NameIdentifier, user.Id), 
+        new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+        new Claim(ClaimTypes.Role, user.Role),
+        new Claim("AdminId", user.AdminId ?? user.Id)
+    };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

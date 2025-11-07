@@ -1,55 +1,70 @@
 ﻿<!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
     <title>Access Revoked</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f4f7fc;
+            margin: 0;
+            padding: 0;
         }
 
         .container {
             max-width: 600px;
-            margin: 20px auto;
-            padding: 20px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            margin: 30px auto;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(26,42,68,0.08);
         }
 
         .header {
-            background-color: #1a2a44;
-            color: #fff;
-            padding: 10px;
+            background: #FF6B6B;
+            padding: 30px;
             text-align: center;
+            color: white;
         }
 
+            .header h1 {
+                margin: 0;
+                font-size: 24px;
+            }
+
         .content {
-            padding: 20px;
+            padding: 40px 30px;
+            color: #333;
         }
+
+            .content p {
+                font-size: 16px;
+                line-height: 1.7;
+                color: #555;
+                margin: 16px 0;
+            }
 
         .footer {
             text-align: center;
-            font-size: 12px;
-            color: #777;
-            margin-top: 20px;
+            padding: 30px;
+            background: #f9f9f9;
+            color: #888;
+            font-size: 14px;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h2>XT Home Manager</h2>
+            <h1>Access Update</h1>
         </div>
         <div class="content">
-            <p>Dear {{FullName}},</p>
-            <p>We regret to inform you that your access to the record "{{record_name}}" has been revoked by the record owner.</p>
-            <p>If you have any questions or need further assistance, please contact the record owner or our support team.</p>
+            <p>Hello <strong>{{FullName}}</strong>,</p>
+            <p>Your access to <strong>"{{record_name}}"</strong> has been <strong>revoked</strong> by the owner.</p>
+            <p>If this was unexpected, please contact them directly.</p>
         </div>
         <div class="footer">
-            <p>&copy; 2025 XT Home Manager. All rights reserved.</p>
+            <p>© 2025 XT Home Manager</p>
         </div>
     </div>
 </body>

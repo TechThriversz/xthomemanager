@@ -14,7 +14,12 @@ namespace XTHomeManager.API.Models
         public string? PasswordResetToken { get; set; } // Added for password reset token
         public DateTime? PasswordResetTokenExpiry { get; set; } // Added for token expirations
 
+        public bool IsActive { get; set; } = true;
+
         [JsonIgnore]
         public ICollection<RecordViewer> ViewerRecords { get; set; }
+
+        // Navigation
+        public ICollection<Password> Passwords { get; set; } = new List<Password>();
     }
 }

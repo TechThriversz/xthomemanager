@@ -14,6 +14,7 @@ namespace XTHomeManager.API.Data
         public DbSet<RentEntry> RentEntries { get; set; }
         public DbSet<Settings> Settings { get; set; }
         public DbSet<RecordViewer> RecordViewers { get; set; }
+        public DbSet<Password> Passwords { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

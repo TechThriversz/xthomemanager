@@ -11,135 +11,154 @@ namespace XTHomeManager.API.Services
     public class EmailService
     {
         private readonly IConfiguration _configuration;
-
         public EmailService(IConfiguration configuration)
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         }
 
+        // === PUBLIC METHODS ===
         public async Task SendWelcomeEmailAsync(string toEmail, string name)
         {
             var subject = "Welcome to XT Home Manager!";
-            var templatePath = Path.Combine("EmailTemplates", "WelcomeEmailTemplate.html");
-            var htmlContent = await LoadTemplateAsync(templatePath, name);
+            var htmlContent = await LoadTemplateAsync("WelcomeEmailTemplate.html", name);
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
 
         public async Task SendPasswordResetEmailAsync(string toEmail, string name, string resetLink)
         {
-            var subject = "Your Password Reset Request";
-            var templatePath = Path.Combine("EmailTemplates", "ResetPasswordEmailTemplate.html");
-            var htmlContent = await LoadTemplateAsync(templatePath, name, resetLink: resetLink);
+            var subject = "Reset Your Password";
+            var htmlContent = await LoadTemplateAsync("ResetPasswordEmailTemplate.html", name, resetLink: resetLink);
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
 
         public async Task SendInviteEmailAsync(string toEmail, string name, string inviterName, string recordName, string tempPassword)
         {
-            var subject = "You’ve Been Invited to View a Record on XT Home Manager";
-            var templatePath = Path.Combine("EmailTemplates", "InviteEmailTemplate.html");
-
-            var htmlContent = await LoadTemplateInviteAsync(
-                templatePath,
-                name,
-                inviterName,
-                recordName,
-                tempPassword
-            );
-
+            var subject = "You've Been Invited to View a Record";
+            var htmlContent = await LoadInviteTemplateAsync("InviteEmailTemplate.html", name, inviterName, recordName, tempPassword);
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
 
-        private async Task<string> LoadTemplateInviteAsync(
-    string templatePath,
-    string name,
-    string inviterName = null,
-    string recordName = null,
-    string tempPassword = null)
+        public async Task SendRevokeEmailAsync(string toEmail, string name, string recordName)
         {
-            // Fix path for production
-            var basePath = AppDomain.CurrentDomain.BaseDirectory;
-            var fullPath = Path.Combine(basePath, templatePath);
+            var subject = "Access Revoked";
+            var htmlContent = await LoadTemplateAsync("RevokeEmailTemplate.html", name, recordName: recordName);
+            await SendEmailAsync(toEmail, subject, htmlContent);
+        }
 
-            if (!File.Exists(fullPath))
-            {
-                // Fallback: inline HTML (prevents 500)
-                return $@"
-            <h2>Hello {name},</h2>
-            <p><strong>{inviterName}</strong> invited you to view <strong>{recordName}</strong>.</p>
-            {(tempPassword != null ? $"<p><strong>Temp Password:</strong> <code>{tempPassword}</code></p>" : "<p>Log in to accept.</p>")}
-            <a href='https://xthomemanager.vercel.app'>Open App</a>
-        ";
-            }
+        // === PRIVATE HELPERS ===
+        private async Task<string> LoadTemplateAsync(string templateName, string name, string resetLink = null, string recordName = null)
+        {
+            var fullPath = GetFullPath(templateName);
+            var html = File.Exists(fullPath) ? await File.ReadAllTextAsync(fullPath) : GetFallbackTemplate(templateName);
 
-            var html = await File.ReadAllTextAsync(fullPath);
+            return html
+                .Replace("{{FullName}}", name ?? "User")
+                .Replace("{{ResetLink}}", resetLink ?? "")
+                .Replace("{{record_name}}", recordName ?? "a record");
+        }
 
-            // Replace known placeholders
+        private async Task<string> LoadInviteTemplateAsync(string templateName, string name, string inviterName, string recordName, string tempPassword)
+        {
+            var fullPath = GetFullPath(templateName);
+            var html = File.Exists(fullPath) ? await File.ReadAllTextAsync(fullPath) : GetFallbackInviteTemplate();
+
             html = html
                 .Replace("{{Name}}", name ?? "User")
                 .Replace("{{InviterName}}", inviterName ?? "Someone")
                 .Replace("{{RecordName}}", recordName ?? "a record")
                 .Replace("{{TempPassword}}", tempPassword ?? "");
 
-            // Handle conditional block
-            if (tempPassword != null)
+            // Handle conditional
+            if (string.IsNullOrEmpty(tempPassword))
             {
-                html = html.Replace("{{#if IsNewUser}}", "").Replace("{{/if}}", "");
-                html = html.Replace("{{else}}", ""); // Remove else part
+                html = html.Replace("{{#if IsNewUser}}", "display:none;").Replace("{{/if}}", "");
             }
             else
             {
-                // Remove entire {{#if}} block
-                var ifBlock = html.Split(new[] { "{{#if IsNewUser}}" }, StringSplitOptions.None)[1]
-                                  .Split(new[] { "{{/if}}" }, StringSplitOptions.None)[0];
-                var elseBlock = ifBlock.Split(new[] { "{{else}}" }, StringSplitOptions.None);
-                var newUserBlock = elseBlock[0];
-                var existingUserBlock = elseBlock.Length > 1 ? elseBlock[1] : "";
-
-                html = html.Replace("{{#if IsNewUser}}" + ifBlock + "{{/if}}", existingUserBlock);
+                html = html.Replace("{{else}}", "display:none;").Replace("{{/if}}", "");
             }
 
             return html;
         }
 
-        public async Task SendRevokeEmailAsync(string toEmail, string name, string recordName)
+        private string GetFullPath(string templateName)
         {
-            var subject = "Your Access to a Record Has Been Revoked";
-            var templatePath = Path.Combine("EmailTemplates", "RevokeEmailTemplate.html");
-            var htmlContent = await LoadTemplateAsync(templatePath, name, recordName: recordName); // Changed recordId to recordName
-            await SendEmailAsync(toEmail, subject, htmlContent);
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "EmailTemplates", templateName);
         }
-        private async Task<string> LoadTemplateAsync(string templatePath, string name, string inviterName = null, string recordName = null, string tempPassword = null, string resetLink = null, string recordId = null)
-        {
-            if (!File.Exists(templatePath))
-                throw new FileNotFoundException($"Email template not found at {templatePath}");
 
-            var htmlContent = await File.ReadAllTextAsync(templatePath);
-            htmlContent = htmlContent.Replace("{{FullName}}", name ?? "User");
-            if (resetLink != null) htmlContent = htmlContent.Replace("{{ResetLink}}", resetLink);
-            if (inviterName != null) htmlContent = htmlContent.Replace("{{inviter_name}}", inviterName);
-            if (recordName != null) htmlContent = htmlContent.Replace("{{record_name}}", recordName);
-            if (tempPassword != null) htmlContent = htmlContent.Replace("{{temp_password}}", tempPassword);
-            return htmlContent;
-        }
+        private string GetFallbackTemplate(string name) => name switch
+        {
+            "WelcomeEmailTemplate.html" => GetBeautifulWelcomeFallback(),
+            "ResetPasswordEmailTemplate.html" => GetBeautifulResetFallback(),
+            "RevokeEmailTemplate.html" => GetBeautifulRevokeFallback(),
+            _ => "<h2>Hello</h2><p>Welcome to XT Home Manager.</p>"
+        };
+
+        private string GetFallbackInviteTemplate() => @"
+            <div style='font-family:Arial,sans-serif;color:#333;padding:20px;'>
+                <h2>Hello {{Name}},</h2>
+                <p><strong>{{InviterName}}</strong> invited you to view <strong>{{RecordName}}</strong>.</p>
+                {{#if IsNewUser}}
+                <div style='background:#FFF6F5;padding:15px;border-radius:8px;'>
+                    <p><strong>Temp Password:</strong> <code>{{TempPassword}}</code></p>
+                </div>
+                {{else}}
+                <p>Log in to accept.</p>
+                {{/if}}
+                <a href='https://xthomemanager.vercel.app' style='background:#1A2A44;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;display:inline-block;margin-top:20px;'>
+                    Open App
+                </a>
+            </div>";
 
         private async Task SendEmailAsync(string toEmail, string subject, string htmlContent)
         {
-            var emailSettings = _configuration.GetSection("EmailSettings");
-            if (emailSettings == null) throw new InvalidOperationException("Email settings not configured.");
+            var settings = _configuration.GetSection("EmailSettings");
+            var message = new MimeMessage();
+            message.From.Add(MailboxAddress.Parse(settings["SenderEmail"]));
+            message.To.Add(MailboxAddress.Parse(toEmail));
+            message.Subject = subject;
+            message.Body = new TextPart("html") { Text = htmlContent };
 
-            var email = new MimeMessage();
-            email.From.Add(new MailboxAddress(emailSettings["SenderName"], emailSettings["SenderEmail"]));
-            email.To.Add(MailboxAddress.Parse(toEmail));
-            email.Subject = subject;
-
-            var builder = new BodyBuilder { HtmlBody = htmlContent };
-            email.Body = builder.ToMessageBody();
-
-            using var smtp = new SmtpClient();
-            await smtp.ConnectAsync(emailSettings["SmtpServer"], int.Parse(emailSettings["Port"]), SecureSocketOptions.StartTls);
-            await smtp.AuthenticateAsync(emailSettings["SenderEmail"], emailSettings["Password"]);
-            await smtp.SendAsync(email);
-            await smtp.DisconnectAsync(true);
+            using var client = new SmtpClient();
+            await client.ConnectAsync(settings["SmtpServer"], int.Parse(settings["Port"]), SecureSocketOptions.StartTls);
+            await client.AuthenticateAsync(settings["SenderEmail"], settings["Password"]);
+            await client.SendAsync(message);
+            await client.DisconnectAsync(true);
         }
+
+        // === FALLBACK TEMPLATES (BEAUTIFUL) ===
+        private string GetBeautifulWelcomeFallback() => @"
+            <div style='max-width:600px;margin:auto;font-family:Arial,sans-serif;background:#f9f9f9;padding:30px;border-radius:12px;'>
+                <h1 style='color:#1A2A44;text-align:center;'>Welcome to XT Home Manager!</h1>
+                <p style='font-size:16px;color:#555;'>Hello <strong>{{FullName}}</strong>,</p>
+                <p style='font-size:16px;color:#555;line-height:1.6;'>Your account is ready. Start tracking milk, rent, bills, and more — all in one beautiful place.</p>
+                <div style='text-align:center;margin:30px 0;'>
+                    <a href='https://xthomemanager.vercel.app' style='background:#1A2A44;color:white;padding:14px 32px;text-decoration:none;border-radius:50px;font-weight:bold;'>
+                        Open Dashboard
+                    </a>
+                </div>
+                <p style='color:#888;font-size:14px;text-align:center;'>© 2025 XT Home Manager</p>
+            </div>";
+
+        private string GetBeautifulResetFallback() => @"
+            <div style='max-width:600px;margin:auto;font-family:Arial,sans-serif;background:#f9f9f9;padding:30px;border-radius:12px;'>
+                <h1 style='color:#1A2A44;text-align:center;'>Reset Your Password</h1>
+                <p style='font-size:16px;color:#555;'>Hello <strong>{{FullName}}</strong>,</p>
+                <p style='font-size:16px;color:#555;line-height:1.6;'>Click below to reset your password. Link expires in 1 hour.</p>
+                <div style='text-align:center;margin:30px 0;'>
+                    <a href='{{ResetLink}}' style='background:#1A2A44;color:white;padding:14px 32px;text-decoration:none;border-radius:50px;font-weight:bold;'>
+                        Reset Password
+                    </a>
+                </div>
+                <p style='color:#888;font-size:14px;text-align:center;'>Ignore if you didn't request this.</p>
+            </div>";
+
+        private string GetBeautifulRevokeFallback() => @"
+            <div style='max-width:600px;margin:auto;font-family:Arial,sans-serif;background:#f9f9f9;padding:30px;border-radius:12px;'>
+                <h1 style='color:#1A2A44;text-align:center;'>Access Revoked</h1>
+                <p style='font-size:16px;color:#555;'>Hello <strong>{{FullName}}</strong>,</p>
+                <p style='font-size:16px;color:#555;line-height:1.6;'>Your access to <strong>{{record_name}}</strong> has been revoked by the owner.</p>
+                <p style='color:#888;font-size:14px;text-align:center;'>© 2025 XT Home Manager</p>
+            </div>";
     }
 }

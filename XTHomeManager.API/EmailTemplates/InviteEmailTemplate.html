@@ -1,26 +1,113 @@
 ﻿<!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8" />
+    <meta charset="utf-8">
     <title>You're Invited!</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f4f7fc;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 30px auto;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(26,42,68,0.08);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4ECDC4, #44A08D);
+            padding: 30px;
+            text-align: center;
+            color: white;
+        }
+
+            .header h1 {
+                margin: 0;
+                font-size: 24px;
+            }
+
+        .content {
+            padding: 40px 30px;
+            color: #333;
+        }
+
+            .content p {
+                font-size: 16px;
+                line-height: 1.7;
+                color: #555;
+                margin: 16px 0;
+            }
+
+        .btn {
+            display: inline-block;
+            background: #1A2A44;
+            color: white;
+            padding: 14px 32px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .temp-pass {
+            background: #FFF6F5;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+            .temp-pass code {
+                background: #f8d7da;
+                color: #721c24;
+                padding: 8px 16px;
+                border-radius: 8px;
+                font-size: 18px;
+                font-weight: bold;
+            }
+
+        .footer {
+            text-align: center;
+            padding: 30px;
+            background: #f9f9f9;
+            color: #888;
+            font-size: 14px;
+        }
+    </style>
 </head>
-<body style="font-family: Arial, sans-serif; color: #333;">
-    <h2>Hello {{Name}},</h2>
-    <p><strong>{{InviterName}}</strong> has invited you to view the record:</p>
-    <h3 style="color: #1A2A44;">{{RecordName}}</h3>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>You're Invited!</h1>
+        </div>
+        <div class="content">
+            <p>Hello <strong>{{Name}}</strong>,</p>
+            <p><strong>{{InviterName}}</strong> has shared a record with you:</p>
+            <h3 style="color:#1A2A44;margin:20px 0;">{{RecordName}}</h3>
 
-    {{#if IsNewUser}}
-    <div style="background: #FFF6F5; padding: 15px; border-radius: 8px; margin: 20px 0;">
-        <p><strong>Your temporary password:</strong></p>
-        <p style="font-size: 18px; font-weight: bold; color: #D9534F;">{{TempPassword}}</p>
-        <p><em>Please change it after logging in.</em></p>
+            <div {{#if IsNewUser}} class="temp-pass" {{else}} style="display:none" {{/if}}>
+                <p><strong>Temporary Password:</strong></p>
+                <code>{{TempPassword}}</code>
+                <p style="margin-top:10px;font-size:14px;"><em>Change it after login.</em></p>
+            </div>
+
+            <div {{^if IsNewUser}} class="temp-pass" style="background:#E9F1FC;" {{/if}}>
+                <p>You already have an account. Log in to view.</p>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="https://xthomemanager.vercel.app" class="btn">Open App</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>© 2025 XT Home Manager</p>
+        </div>
     </div>
-    {{else}}
-    <p>You already have an account. Log in to accept the invite.</p>
-    {{/if}}
-
-    <a href="https://xthomemanager.vercel.app" style="background: #1A2A44; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; margin-top: 20px;">
-        Open App
-    </a>
 </body>
 </html>

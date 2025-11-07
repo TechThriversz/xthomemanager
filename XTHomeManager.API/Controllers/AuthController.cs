@@ -36,9 +36,11 @@ namespace XTHomeManager.API.Controllers
             {
                 return Unauthorized("Invalid email or password");
             }
+            if (user == null || !user.IsActive) 
+                return Unauthorized("Account is deactivated. Contact techthrivers@gmail.com");
 
             var token = _userService.GenerateJwtToken(user);
-            return Ok(new { Token = token, User = new { user.Id, user.Email, user.FullName, user.ImagePath } });
+            return Ok(new { Token = token, User = new { user.Id, user.Email, user.FullName, user.ImagePath, user.Role,user.IsActive } });
         }
 
         [HttpPost("register")]
@@ -52,10 +54,18 @@ namespace XTHomeManager.API.Controllers
             if (user == null)
                 return BadRequest("User with this email already exists.");
 
-            await _emailService.SendWelcomeEmailAsync(user.Email, user.FullName);
+            try
+            {
+                await _emailService.SendWelcomeEmailAsync(user.Email, user.FullName);
+            }
+            catch (Exception ex)
+            {
+                // LOG BUT DON'T CRASH
+                Console.WriteLine($"Welcome email failed: {ex.Message}");
+            }
 
             var token = _userService.GenerateJwtToken(user);
-            return Ok(new { Token = token, User = new { user.Id, user.Email, user.FullName, user.ImagePath } });
+            return Ok(new { Token = token, User = new { user.Id, user.Email, user.FullName, user.ImagePath, user.Role, user.IsActive } });
         }
 
         [HttpPost("forgot-password")]
@@ -67,11 +77,12 @@ namespace XTHomeManager.API.Controllers
             var (user, token) = await _userService.GeneratePasswordResetTokenAsync(model.Email);
             if (user == null || string.IsNullOrEmpty(token))
             {
-                return Ok("If an account with that email exists, a password reset link has been sent.");
+                return Ok("If an account exists, a reset link has been sent.");
             }
 
-            var frontendBaseUrl = _configuration["Frontend:BaseUrl"] ?? "http://localhost:5173";
-            var resetLink = $"{frontendBaseUrl}/reset-password?token={token}&email={Uri.EscapeDataString(user.Email)}";
+            var frontendBaseUrl = _configuration["Frontend:BaseUrl"] ?? "https://xthomemanager.vercel.app";
+            var resetLink = $"{frontendBaseUrl}/reset-password?token={token}&email={user.Email}";
+            // REMOVE Uri.EscapeDataString → LET BROWSER HANDLE IT
 
             try
             {
@@ -79,14 +90,12 @@ namespace XTHomeManager.API.Controllers
             }
             catch (Exception ex)
             {
-                // Log the error but don't expose it to the user
-                Console.WriteLine($"Failed to send reset email: {ex.Message}");
-                return StatusCode(500, "An error occurred while sending the reset email. Please try again.");
+                Console.WriteLine($"Reset email failed: {ex.Message}");
+                return StatusCode(500, "Failed to send reset email. Try again later.");
             }
 
-            return Ok("If an account with that email exists, a password reset link has been sent.");
+            return Ok("Reset link sent if account exists.");
         }
-
         [HttpPost("reset-password")]
         public async Task<ActionResult> ResetPassword([FromBody] ResetPasswordModel model)
         {
