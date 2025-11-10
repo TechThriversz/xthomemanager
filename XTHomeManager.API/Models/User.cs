@@ -11,15 +11,28 @@ namespace XTHomeManager.API.Models
         public string Role { get; set; }
         public string? AdminId { get; set; }
         public string? ImagePath { get; set; }
-        public string? PasswordResetToken { get; set; } // Added for password reset token
-        public DateTime? PasswordResetTokenExpiry { get; set; } // Added for token expirations
+        public string? PasswordResetToken { get; set; } 
+        public DateTime? PasswordResetTokenExpiry { get; set; } 
+        public string? PhoneNumber { get; set; }
 
         public bool IsActive { get; set; } = true;
+
+        // PRO FIELDS
+        public bool IsPro { get; set; } = false;
+        public DateTime? ProStartDate { get; set; }
+        public DateTime? ProEndDate { get; set; }
+
+        //NEW PERMISSION SYSTEM
+        public bool CanUsePasswordVault { get; set; } = false;
+        public bool CanUseFamilyMembers { get; set; } = false;
+        public bool CanUseMedicalRecords { get; set; } = false;
 
         [JsonIgnore]
         public ICollection<RecordViewer> ViewerRecords { get; set; }
 
         // Navigation
         public ICollection<Password> Passwords { get; set; } = new List<Password>();
+
+        public ICollection<ProUpgradeRequest> ProUpgradeRequests { get; set; } = new List<ProUpgradeRequest>();
     }
 }

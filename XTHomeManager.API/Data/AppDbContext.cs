@@ -15,6 +15,9 @@ namespace XTHomeManager.API.Data
         public DbSet<Settings> Settings { get; set; }
         public DbSet<RecordViewer> RecordViewers { get; set; }
         public DbSet<Password> Passwords { get; set; } = null!;
+        public DbSet<ProUpgradeRequest> ProUpgradeRequests { get; set; } = null!;
+        public DbSet<FamilyMember> FamilyMembers { get; set; } = null!;
+        public DbSet<OtherMember> OtherMembers { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -26,6 +29,21 @@ namespace XTHomeManager.API.Data
             modelBuilder.Entity<User>().Property(u => u.Role).IsRequired().HasMaxLength(50);
             modelBuilder.Entity<User>().Property(u => u.AdminId).IsRequired(false).HasMaxLength(450);
             modelBuilder.Entity<User>().Property(u => u.ImagePath).IsRequired(false);
+            modelBuilder.Entity<User>().Property(u => u.PhoneNumber).HasMaxLength(20).IsRequired(false);
+            modelBuilder.Entity<User>().Property(u => u.IsPro).HasDefaultValue(false);
+            modelBuilder.Entity<User>().Property(u => u.ProStartDate).IsRequired(false);
+            modelBuilder.Entity<User>().Property(u => u.ProEndDate).IsRequired(false);
+            // ProUpgradeRequest config
+            modelBuilder.Entity<ProUpgradeRequest>(entity =>
+            {
+                entity.HasKey(p => p.Id);
+                entity.Property(p => p.Status).HasMaxLength(20).HasDefaultValue("Pending");
+                entity.Property(p => p.RequestDate).HasDefaultValueSql("GETUTCDATE()");
+                entity.HasOne(p => p.User)
+                      .WithMany(u => u.ProUpgradeRequests)
+                      .HasForeignKey(p => p.UserId);
+            });
+
 
             // Record configuration
             modelBuilder.Entity<Record>().Property(r => r.Name).IsRequired().HasMaxLength(100);

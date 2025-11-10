@@ -14,7 +14,12 @@ using XTHomeManager.API.Services;
 public class PasswordController : ControllerBase
 {
     private readonly PasswordService _service;
-    public PasswordController(PasswordService service) => _service = service;
+    private readonly UserService _userService;  
+    public PasswordController(PasswordService service, UserService userService)
+    {
+    _service = service ?? throw new ArgumentNullException(nameof(service));
+    _userService = userService ?? throw new ArgumentNullException(nameof(userService));
+        }
 
     private string UserId => User.FindFirst("id")?.Value
                              ?? throw new UnauthorizedAccessException("User not found");
@@ -22,11 +27,17 @@ public class PasswordController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<Password>>> Get()
     {
+        var user = await _userService.GetUserByIdAsync(UserId);
+        if (user == null) return NotFound("User not found");
+        if (!user.CanUsePasswordVault) return Forbid("Access denied to Password Vault");
+
         var passwords = await _service.GetPasswordsAsync(UserId);
         var decrypted = passwords.Select(p => new
         {
             p.Id,
             p.AccountName,
+            p.Url,
+            p.Category,
             p.Email,
             p.Username,
             DecryptedPassword = _service.DecryptPassword(p.EncryptedPassword),
@@ -44,6 +55,10 @@ public class PasswordController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Password>> Create([FromBody] PasswordDto dto)
     {
+        var user = await _userService.GetUserByIdAsync(UserId);
+        if (user == null || !user.CanUsePasswordVault)
+            return Forbid("Access denied to Password Vault");
+
         var password = await _service.AddPasswordAsync(UserId, dto);
         return CreatedAtAction(nameof(GetById), new { id = password.Id }, password);
     }
@@ -51,6 +66,9 @@ public class PasswordController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<Password>> GetById(int id)
     {
+        var user = await _userService.GetUserByIdAsync(UserId);
+        if (user == null || !user.CanUsePasswordVault)
+            return Forbid("Access denied to Password Vault");
         var password = await _service.GetPasswordByIdAsync(id, UserId);
         return password == null ? NotFound() : Ok(password);
     }
@@ -58,6 +76,9 @@ public class PasswordController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, [FromBody] PasswordDto dto)
     {
+        var user = await _userService.GetUserByIdAsync(UserId);
+        if (user == null || !user.CanUsePasswordVault)
+            return Forbid("Access denied to Password Vault");
         var result = await _service.UpdatePasswordAsync(id, UserId, dto);
         return result != null ? Ok(result) : NotFound();
     }
@@ -65,6 +86,9 @@ public class PasswordController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
+        var user = await _userService.GetUserByIdAsync(UserId);
+        if (user == null || !user.CanUsePasswordVault)
+            return Forbid("Access denied to Password Vault");
         var result = await _service.DeletePasswordAsync(id, UserId);
         return result ? Ok() : NotFound();
     }

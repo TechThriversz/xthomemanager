@@ -16,7 +16,7 @@ namespace XTHomeManager.API.Controllers
     {
         private readonly AppDbContext _context;
         private readonly UserService _userService;
-        private readonly AmazonS3Client _s3Client; // Updated to use concrete type
+        private readonly AmazonS3Client _s3Client; 
 
         public UserController(AppDbContext context, UserService userService, AmazonS3Client s3Client)
         {
@@ -47,6 +47,12 @@ namespace XTHomeManager.API.Controllers
                 {
                     user.FullName = model.FullName;
                 }
+
+                if (!string.IsNullOrEmpty(model.PhoneNumber))
+                {
+                    user.PhoneNumber = model.PhoneNumber;
+                }
+
                 if (!string.IsNullOrEmpty(model.Password))
                 {
                     user.PasswordHash = _userService.HashPassword(model.Password);
@@ -83,7 +89,14 @@ namespace XTHomeManager.API.Controllers
                     user.Email,
                     user.Role,
                     user.FullName,
-                    user.ImagePath
+                    user.ImagePath,
+                    user.IsActive,
+                    user.IsPro,
+                    user.CanUsePasswordVault,
+                    user.CanUseFamilyMembers,
+                    user.CanUseMedicalRecords,
+                    user.PhoneNumber
+
                 });
             }
             catch (Exception ex)
@@ -91,11 +104,44 @@ namespace XTHomeManager.API.Controllers
                 return StatusCode(500, $"An error occurred while updating the user: {ex.ToString()}"); // Full exception details
             }
         }
+
+        [HttpGet("me")]
+        public async Task<ActionResult> GetCurrentUser()
+        {
+            var userId = User.FindFirst("id")?.Value;
+            var user = await _context.Users
+                .Include(u => u.ProUpgradeRequests)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null) return NotFound();
+
+            return Ok(new
+            {
+                user.Id,
+                user.FullName,
+                user.Email,
+                user.PhoneNumber,
+                user.Role,
+                user.IsActive,
+                user.IsPro,
+                user.ProEndDate,
+                user.CanUsePasswordVault,
+                user.CanUseFamilyMembers,
+                user.CanUseMedicalRecords,
+                proUpgradeRequests = user.ProUpgradeRequests
+                    .Select(r => new { r.Id, r.Status, r.RequestDate })
+                    .ToList()
+            });
+        }
     }
+
+
 
     public class UpdateUserModel
     {
         public string? FullName { get; set; }
+
+        public string? PhoneNumber { get; set; }
         public string? Password { get; set; }
         public IFormFile? Image { get; set; }
     }

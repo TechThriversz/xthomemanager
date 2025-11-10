@@ -45,6 +45,30 @@ namespace XTHomeManager.API.Services
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
 
+        public async Task SendProUpgradeRequestAsync(string toEmail, string fullName, string phone, string email, DateTime requestDate)
+        {
+            var subject = $"PRO Upgrade Request - {email}";
+            var htmlContent = $@"
+        <div style='max-width:600px;margin:auto;font-family:Arial,sans-serif;background:#f9f9f9;padding:30px;border-radius:12px;'>
+            <h1 style='color:#1A2A44;text-align:center;'>New PRO Upgrade Request</h1>
+            <div style='background:white;padding:20px;border-radius:8px;'>
+                <p style='margin:10px 0;'><strong>Full Name:</strong> {fullName ?? "Not provided"}</p>
+                <p style='margin:10px 0;'><strong>Phone:</strong> {phone ?? "Not provided"}</p>
+                <p style='margin:10px 0;'><strong>Email:</strong> {email}</p>
+                <p style='margin:10px 0;'><strong>Requested On:</strong> {requestDate:dddd, MMMM d, yyyy 'at' h:mm tt}</p>
+            </div>
+            <div style='text-align:center;margin-top:30px;'>
+                <a href='https://xthomemanager.vercel.app/admin/users' 
+                   style='background:#1A2A44;color:white;padding:14px 32px;text-decoration:none;border-radius:50px;font-weight:bold;'>
+                    Open Admin Panel
+                </a>
+            </div>
+            <p style='color:#888;font-size:14px;text-align:center;margin-top:30px;'>© 2025 XT Home Manager</p>
+        </div>";
+
+            await SendEmailAsync(toEmail, subject, htmlContent);
+        }
+
         // === PRIVATE HELPERS ===
         private async Task<string> LoadTemplateAsync(string templateName, string name, string resetLink = null, string recordName = null)
         {

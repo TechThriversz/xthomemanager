@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using XTHomeManager.API.Data;
 
@@ -11,9 +12,11 @@ using XTHomeManager.API.Data;
 namespace XTHomeManager.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251110150530_AddFixFamilyTree")]
+    partial class AddFixFamilyTree
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -108,6 +111,7 @@ namespace XTHomeManager.API.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("BornPlace")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("CreatedAt")
@@ -117,6 +121,7 @@ namespace XTHomeManager.API.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("DiedPlace")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ImagePath")
@@ -162,6 +167,7 @@ namespace XTHomeManager.API.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("BornPlace")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("CreatedAt")
@@ -171,6 +177,7 @@ namespace XTHomeManager.API.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("DiedPlace")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ImagePath")

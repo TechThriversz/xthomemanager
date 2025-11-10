@@ -44,7 +44,7 @@ namespace XTHomeManager.API.Services
                 Email = email,
                 FullName = fullName,
                 PasswordHash = HashPassword(password),
-                Role = "User" // Changed to "User"
+                Role = "User"
             };
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
@@ -105,7 +105,7 @@ namespace XTHomeManager.API.Services
                 Email = email,
                 FullName = email.Split('@')[0],
                 PasswordHash = HashPassword(tempPassword),
-                Role = "User", // Changed to "User"
+                Role = "User", 
                 AdminId = adminId,
                 IsActive = true,
                 PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(24)

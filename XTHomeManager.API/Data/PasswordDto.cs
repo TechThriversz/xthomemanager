@@ -4,6 +4,8 @@ namespace XTHomeManager.API.DTOs
     public class PasswordDto
     {
         public string? AccountName { get; set; }
+        public string Url { get; set; }
+        public string Category { get; set; }
         public string? Email { get; set; }
         public string? Username { get; set; }
         public string? Password { get; set; }
