@@ -34,6 +34,7 @@ public class AdminController : ControllerBase
                 u.Email,
                 u.PhoneNumber,
                 u.Role,
+                u.ImagePath,
                 u.IsActive,
                 u.IsPro,
                 u.ProEndDate,

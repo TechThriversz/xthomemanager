@@ -122,6 +122,7 @@ namespace XTHomeManager.API.Controllers
                 user.Email,
                 user.PhoneNumber,
                 user.Role,
+                user.ImagePath,
                 user.IsActive,
                 user.IsPro,
                 user.ProEndDate,

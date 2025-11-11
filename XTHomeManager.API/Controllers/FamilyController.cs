@@ -103,14 +103,22 @@ public class FamilyController : ControllerBase
 
         var imagePath = await UploadToR2(dto.Image);
 
+        var parentIds = string.IsNullOrWhiteSpace(dto.ParentIdsJson)
+            ? "[]"
+            : dto.ParentIdsJson;
+
+        var spouseIds = string.IsNullOrWhiteSpace(dto.SpouseIdsJson)
+            ? "[]"
+            : dto.SpouseIdsJson;
+
         var member = new FamilyMember
         {
             UserId = userId,
             Name = dto.Name,
             Birthday = dto.Birthday,
             Relation = dto.Relation,
-            ParentIds = JsonSerializer.Serialize(dto.ParentIds ?? new List<int>()),
-            SpouseIds = JsonSerializer.Serialize(dto.SpouseIds ?? new List<int>()),
+            ParentIds = parentIds,
+            SpouseIds = spouseIds,
             IsDeceased = dto.IsDeceased,
             DeathDate = dto.DeathDate,
             BornPlace = dto.BornPlace,
@@ -131,7 +139,6 @@ public class FamilyController : ControllerBase
 
         var member = await _context.FamilyMembers
             .FirstOrDefaultAsync(m => m.Id == id && m.UserId == userId);
-
         if (member == null) return NotFound();
 
         if (dto.Image != null)
@@ -140,8 +147,8 @@ public class FamilyController : ControllerBase
         member.Name = dto.Name;
         member.Birthday = dto.Birthday;
         member.Relation = dto.Relation;
-        member.ParentIds = JsonSerializer.Serialize(dto.ParentIds ?? new List<int>());
-        member.SpouseIds = JsonSerializer.Serialize(dto.SpouseIds ?? new List<int>());
+        member.ParentIds = string.IsNullOrWhiteSpace(dto.ParentIdsJson) ? "[]" : dto.ParentIdsJson;
+        member.SpouseIds = string.IsNullOrWhiteSpace(dto.SpouseIdsJson) ? "[]" : dto.SpouseIdsJson;
         member.IsDeceased = dto.IsDeceased;
         member.DeathDate = dto.DeathDate;
         member.BornPlace = dto.BornPlace;
