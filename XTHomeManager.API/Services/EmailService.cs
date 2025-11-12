@@ -69,6 +69,53 @@ namespace XTHomeManager.API.Services
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
 
+        public async Task SendDeletionRequestAsync(string toEmail, string fullName, string email, DateTime requestDate)
+        {
+            var subject = $"Account Deletion Request - {email}";
+            var htmlContent = $@"
+<div style='max-width:600px;margin:auto;font-family:Arial,sans-serif;background:#f9f9f9;padding:30px;border-radius:12px;'>
+    <h1 style='color:#1A2A44;text-align:center;'>Account Deletion Request</h1>
+    <div style='background:white;padding:20px;border-radius:8px;'>
+        <p><strong>User:</strong> {fullName}</p>
+        <p><strong>Email:</strong> {email}</p>
+        <p><strong>Requested:</strong> {requestDate:dddd, MMMM d, yyyy 'at' h:mm tt}</p>
+    </div>
+    <div style='text-align:center;margin-top:30px;'>
+        <a href='https://xthomemanager.vercel.app/admin/users' 
+           style='background:#1A2A44;color:white;padding:14px 32px;text-decoration:none;border-radius:50px;font-weight:bold;'>
+            Review in Admin Panel
+        </a>
+    </div>
+    <p style='color:#888;font-size:14px;text-align:center;margin-top:30px;'>© 2025 XT Home Manager</p>
+</div>";
+            await SendEmailAsync(toEmail, subject, htmlContent);
+        }
+
+        public async Task SendDeletionApprovedAsync(string toEmail, string fullName, DateTime deletionAt)
+        {
+            var subject = "Your Account Will Be Deleted in 24 Hours";
+            var htmlContent = $@"
+<div style='max-width:600px;margin:auto;font-family:Arial,sans-serif;background:#f9f9f9;padding:30px;border-radius:12px;'>
+    <h1 style='color:#1A2A44;text-align:center;'>Account Deletion Scheduled</h1>
+    <div style='background:white;padding:20px;border-radius:8px;'>
+        <p>Hi <strong>{fullName}</strong>,</p>
+        <p>Your request to delete your account has been <strong>approved</strong>.</p>
+        <p style='color:#D32F2F;font-weight:bold;'>
+            Your account and all data will be permanently deleted on:<br/>
+            {deletionAt:dddd, MMMM d, yyyy 'at' h:mm tt}
+        </p>
+        <p>You have <strong>24 hours</strong> to cancel this request.</p>
+    </div>
+    <div style='text-align:center;margin-top:30px;'>
+        <a href='https://xthomemanager.vercel.app/settings' 
+           style='background:#D32F2F;color:white;padding:14px 32px;text-decoration:none;border-radius:50px;font-weight:bold;'>
+            Cancel Deletion
+        </a>
+    </div>
+</div>";
+            await SendEmailAsync(toEmail, subject, htmlContent);
+        }
+
         // === PRIVATE HELPERS ===
         private async Task<string> LoadTemplateAsync(string templateName, string name, string resetLink = null, string recordName = null)
         {

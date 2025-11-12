@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using XTHomeManager.API.Data;
 
@@ -11,9 +12,11 @@ using XTHomeManager.API.Data;
 namespace XTHomeManager.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251112135221_AddSettingDefaults")]
+    partial class AddSettingDefaults
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -506,38 +509,6 @@ namespace XTHomeManager.API.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("XTHomeManager.API.Models.UserDeletionRequest", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime?>("ApprovedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DeletionScheduledAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("RequestDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("UserDeletionRequests");
-                });
-
             modelBuilder.Entity("MilkEntry", b =>
                 {
                     b.HasOne("XTHomeManager.API.Models.Record", "Record")
@@ -595,17 +566,6 @@ namespace XTHomeManager.API.Migrations
                         .IsRequired();
 
                     b.Navigation("Record");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("XTHomeManager.API.Models.UserDeletionRequest", b =>
-                {
-                    b.HasOne("XTHomeManager.API.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
                     b.Navigation("User");
                 });

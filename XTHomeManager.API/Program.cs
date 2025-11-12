@@ -1,46 +1,49 @@
 using Amazon.Runtime;
 using Amazon.S3;
+using Hangfire;
+using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using XTHomeManager.API.Data;
 using XTHomeManager.API.Services;
+using XTHomeManager.API.Jobs;
+using XTHomeManager.API.Filters; // ? ADD THIS
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Add services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<PasswordService>();
 builder.Services.AddScoped<EmailService>();
 
-// Configure CORS for React Native and Web
+// CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowReactNativeAndWebOrigins", builder =>
+    options.AddPolicy("AllowReactNativeAndWebOrigins", policy =>
     {
-        builder.WithOrigins(
-                "https://xthomemanagerfe.vercel.app", // Existing web frontend
-                "https://xthomemanager.vercel.app",   // Corrected web frontend URL
-                "http://localhost:5173",             // Existing web dev server
-                "http://localhost:8081",             // React Native Metro bundler
-                "http://192.168.1.0/24",             // Allow local network range (adjust as needed)
-                "https://hmapi.somee.com"            // Explicitly allow the API host
+        policy.WithOrigins(
+                "https://xthomemanagerfe.vercel.app",
+                "https://xthomemanager.vercel.app",
+                "http://localhost:5173",
+                "http://localhost:8081",
+                "https://hmapi.somee.com"
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials()
-            .SetIsOriginAllowedToAllowWildcardSubdomains(); // Allows subdomains if needed
+            .AllowCredentials();
     });
 });
 
-// Configure AWS services for Cloudflare R2
+// AWS R2
 builder.Services.AddSingleton<AmazonS3Client>(sp =>
 {
     var config = new AmazonS3Config
@@ -48,16 +51,14 @@ builder.Services.AddSingleton<AmazonS3Client>(sp =>
         ServiceURL = "https://1264ab1158e680e14e1634cfd0f3d033.r2.cloudflarestorage.com",
         ForcePathStyle = true
     };
-
     var credentials = new BasicAWSCredentials(
         builder.Configuration["AWS:AccessKey"],
         builder.Configuration["AWS:SecretKey"]
     );
-
     return new AmazonS3Client(credentials, config);
 });
 
-// Add authentication
+// JWT
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -74,11 +75,33 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
+// HANGFIRE — MUST BE BEFORE app.Build()
+builder.Services.AddHangfire(config => config
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UseSqlServerStorage(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddHangfireServer();
+
 var app = builder.Build();
 
+// HANGFIRE DASHBOARD
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = new[] { new HangfireAuthorizationFilter() }
+});
+
+// SCHEDULE JOB
+RecurringJob.AddOrUpdate<DeletionJob>(
+    "user-deletion-cleanup",
+    job => job.Execute(),
+    "*/5 * * * *"
+);
+
+// Middleware
 app.UseSwagger();
 app.UseSwaggerUI();
-
 app.UseHttpsRedirection();
 app.UseCors("AllowReactNativeAndWebOrigins");
 app.UseAuthentication();

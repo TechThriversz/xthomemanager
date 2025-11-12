@@ -57,6 +57,12 @@ namespace XTHomeManager.API.Controllers
                 {
                     user.PasswordHash = _userService.HashPassword(model.Password);
                 }
+
+                if (!string.IsNullOrEmpty(model.Gender))
+                    user.Gender = model.Gender;
+
+                if (!string.IsNullOrEmpty(model.DateOfBirth) && DateTime.TryParse(model.DateOfBirth, out var dob))
+                    user.DateOfBirth = dob;
                 if (model.Image != null)
                 {
                     var fileName = $"{Guid.NewGuid()}{Path.GetExtension(model.Image.FileName)}";
@@ -95,7 +101,9 @@ namespace XTHomeManager.API.Controllers
                     user.CanUsePasswordVault,
                     user.CanUseFamilyMembers,
                     user.CanUseMedicalRecords,
-                    user.PhoneNumber
+                    user.PhoneNumber,
+                    user.DateOfBirth,
+                    user.Gender
 
                 });
             }
@@ -121,6 +129,8 @@ namespace XTHomeManager.API.Controllers
                 user.FullName,
                 user.Email,
                 user.PhoneNumber,
+                user.DateOfBirth,
+                user.Gender,
                 user.Role,
                 user.ImagePath,
                 user.IsActive,
@@ -141,9 +151,10 @@ namespace XTHomeManager.API.Controllers
     public class UpdateUserModel
     {
         public string? FullName { get; set; }
-
         public string? PhoneNumber { get; set; }
         public string? Password { get; set; }
         public IFormFile? Image { get; set; }
+        public string? Gender { get; set; }
+        public string? DateOfBirth { get; set; } 
     }
 }

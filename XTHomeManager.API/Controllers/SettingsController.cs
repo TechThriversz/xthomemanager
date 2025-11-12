@@ -19,16 +19,22 @@ namespace XTHomeManager.API.Controllers
         [HttpGet]
         public async Task<ActionResult<Settings>> GetSettings()
         {
-            var userId = User.FindFirst("id")?.Value; // Use "id" instead of "AdminId" for consistency
-            if (string.IsNullOrEmpty(userId))
-            {
-                return Unauthorized("User ID not found in token.");
-            }
+            var userId = User.FindFirst("id")?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
             var settings = await _context.Settings.FirstOrDefaultAsync(s => s.UserId == userId);
             if (settings == null)
             {
-                settings = new Settings { UserId = userId, MilkRatePerLiter = 0 };
+                settings = new Settings
+                {
+                    UserId = userId,
+                    Currency = "PKR",
+                    Country = "Pakistan",
+                    DecimalPlaces = 0,
+                    DateFormat = "dd/MM/yyyy",
+                    WeightUnit = "kg",
+                    MilkRatePerLiter = 0
+                };
                 _context.Settings.Add(settings);
                 await _context.SaveChangesAsync();
             }
@@ -37,27 +43,33 @@ namespace XTHomeManager.API.Controllers
 
         public class SettingsUpdateDto
         {
-            public decimal MilkRatePerLiter { get; set; }
+            public string? Currency { get; set; }
+            public string? Country { get; set; }
+            public int? DecimalPlaces { get; set; }
+            public string? DateFormat { get; set; }
+            public string? WeightUnit { get; set; }
+            public decimal? MilkRatePerLiter { get; set; }
         }
 
         [HttpPost]
-        public async Task<ActionResult<Settings>> UpdateSettings([FromBody] SettingsUpdateDto settingsDto)
+        public async Task<ActionResult<Settings>> UpdateSettings([FromBody] SettingsUpdateDto dto)
         {
-            var userId = User.FindFirst("id")?.Value; // Use "id" instead of "AdminId" for consistency
-            if (string.IsNullOrEmpty(userId))
-            {
-                return Unauthorized("User ID not found in token.");
-            }
+            var userId = User.FindFirst("id")?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-            var existing = await _context.Settings.FirstOrDefaultAsync(s => s.UserId == userId);
-            if (existing == null)
-            {
-                return NotFound("Settings not found for the user.");
-            }
+            var settings = await _context.Settings.FirstOrDefaultAsync(s => s.UserId == userId);
+            if (settings == null) return NotFound();
 
-            existing.MilkRatePerLiter = settingsDto.MilkRatePerLiter;
+            // Update only provided fields
+            if (dto.Currency != null) settings.Currency = dto.Currency;
+            if (dto.Country != null) settings.Country = dto.Country;
+            if (dto.DecimalPlaces.HasValue) settings.DecimalPlaces = dto.DecimalPlaces.Value;
+            if (dto.DateFormat != null) settings.DateFormat = dto.DateFormat;
+            if (dto.WeightUnit != null) settings.WeightUnit = dto.WeightUnit;
+            if (dto.MilkRatePerLiter.HasValue) settings.MilkRatePerLiter = dto.MilkRatePerLiter.Value;
+
             await _context.SaveChangesAsync();
-            return Ok(existing);
+            return Ok(settings);
         }
     }
 }

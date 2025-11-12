@@ -14,6 +14,8 @@ namespace XTHomeManager.API.Models
         public string? PasswordResetToken { get; set; } 
         public DateTime? PasswordResetTokenExpiry { get; set; } 
         public string? PhoneNumber { get; set; }
+        public string? Gender { get; set; }
+        public DateTime? DateOfBirth { get; set; }
 
         public bool IsActive { get; set; } = true;
 

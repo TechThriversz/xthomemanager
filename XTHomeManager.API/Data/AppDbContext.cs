@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using XTHomeManager.API.Models;
+using static Amazon.S3.Util.S3EventNotification;
 
 namespace XTHomeManager.API.Data
 {
@@ -18,6 +19,8 @@ namespace XTHomeManager.API.Data
         public DbSet<ProUpgradeRequest> ProUpgradeRequests { get; set; } = null!;
         public DbSet<FamilyMember> FamilyMembers { get; set; } = null!;
         public DbSet<OtherMember> OtherMembers { get; set; } = null!;
+
+        public DbSet<UserDeletionRequest> UserDeletionRequests { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -95,6 +98,11 @@ namespace XTHomeManager.API.Data
             // Settings configuration
             modelBuilder.Entity<Settings>().Property(s => s.MilkRatePerLiter).IsRequired().HasColumnType("decimal(18,2)");
             modelBuilder.Entity<Settings>().Property(s => s.UserId).IsRequired().HasMaxLength(450);
+            modelBuilder.Entity<Settings>().Property(s => s.Currency).HasMaxLength(10).HasDefaultValue("PKR");
+            modelBuilder.Entity<Settings>().Property(s => s.Country).HasMaxLength(100).HasDefaultValue("Pakistan");
+            modelBuilder.Entity<Settings>().Property(s => s.DecimalPlaces).HasDefaultValue(0);
+            modelBuilder.Entity<Settings>().Property(s => s.DateFormat).HasMaxLength(20).HasDefaultValue("dd/MM/yyyy");
+            modelBuilder.Entity<Settings>().Property(s => s.WeightUnit).HasMaxLength(10).HasDefaultValue("kg");
         }
     }
 }

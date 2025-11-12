@@ -143,4 +143,94 @@ public class AdminController : ControllerBase
         await _context.SaveChangesAsync();
         return Ok();
     }
+
+    [HttpGet("deletion/requests")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> GetDeletionRequests()
+    {
+        var requests = await _context.UserDeletionRequests
+            .Include(r => r.User)
+            .Select(r => new
+            {
+                r.Id,
+                r.Status,
+                r.RequestDate,
+                r.DeletionScheduledAt,
+                user = new
+                {
+                    r.User.Id,
+                    r.User.FullName,
+                    r.User.Email
+                }
+            })
+            .ToListAsync();
+
+        return Ok(requests);
+    }
+
+    [HttpPost("deletion/request")]
+    public async Task<IActionResult> RequestAccountDeletion()
+    {
+        var userId = User.FindFirst("id")?.Value;
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null) return NotFound();
+
+        var existing = await _context.UserDeletionRequests
+            .AnyAsync(r => r.UserId == userId && r.Status == "Pending");
+        if (existing) return BadRequest("Deletion request already pending.");
+
+        var request = new UserDeletionRequest { UserId = userId };
+        _context.UserDeletionRequests.Add(request);
+        await _context.SaveChangesAsync();
+
+        await _emailService.SendDeletionRequestAsync(
+            "techthrivers@gmail.com",
+            user.FullName,
+            user.Email,
+            request.RequestDate
+        );
+
+        return Ok();
+    }
+    [HttpGet("notifications")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> GetNotifications()
+    {
+        var deletionRequests = await _context.UserDeletionRequests
+            .Where(r => r.Status == "Pending")
+            .Select(r => new
+            {
+                type = "deletion_request",
+                message = $"{r.User.FullName} requested account deletion",
+                date = r.RequestDate,
+                seen = false
+            })
+            .ToListAsync();
+
+        return Ok(deletionRequests);
+    }
+
+    [HttpPost("deletion/approve/{requestId}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ApproveDeletion(int requestId)
+    {
+        var request = await _context.UserDeletionRequests
+            .Include(r => r.User)
+            .FirstOrDefaultAsync(r => r.Id == requestId);
+        if (request == null) return NotFound();
+
+        request.Status = "Approved";
+        request.ApprovedDate = DateTime.UtcNow;
+        request.DeletionScheduledAt = DateTime.UtcNow.AddHours(24);
+
+        await _context.SaveChangesAsync();
+
+        await _emailService.SendDeletionApprovedAsync(
+            request.User.Email,
+            request.User.FullName,
+            request.DeletionScheduledAt.Value
+        );
+
+        return Ok(request);
+    }
 }
