@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query.Internal;
 using System.Text.Json;
 using XTHomeManager.API.Data;
 using XTHomeManager.API.Models;
@@ -144,30 +145,6 @@ public class AdminController : ControllerBase
         return Ok();
     }
 
-    [HttpGet("deletion/requests")]
-    [Authorize(Roles = "Admin")]
-    public async Task<ActionResult> GetDeletionRequests()
-    {
-        var requests = await _context.UserDeletionRequests
-            .Include(r => r.User)
-            .Select(r => new
-            {
-                r.Id,
-                r.Status,
-                r.RequestDate,
-                r.DeletionScheduledAt,
-                user = new
-                {
-                    r.User.Id,
-                    r.User.FullName,
-                    r.User.Email
-                }
-            })
-            .ToListAsync();
-
-        return Ok(requests);
-    }
-
     [HttpPost("deletion/request")]
     public async Task<IActionResult> RequestAccountDeletion()
     {
@@ -192,6 +169,107 @@ public class AdminController : ControllerBase
 
         return Ok();
     }
+
+
+    [HttpPost("deletion/cancel")]
+    public async Task<IActionResult> CancelAccountDeletionRequest()
+    {
+
+        var userId = User.FindFirst("id")?.Value;
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null) return NotFound("User not found.");
+
+        var request = await _context.UserDeletionRequests
+            .FirstOrDefaultAsync(r =>
+                r.UserId == userId &&
+                (r.Status == "Pending" || r.Status == "Approved"));
+
+        if (request == null)
+        {
+            return BadRequest("No active or pending deletion request found to cancel.");
+        }
+
+        if (request.Status == "Pending")
+        {
+            await _emailService.SendCancellationRequestToAdminPendingAsync(
+              "techthrivers@gmail.com",
+              user.FullName,
+              user.Email,
+              request.Id,
+              request.RequestDate
+          );
+        }
+        else if (request.Status == "Approved" && request.DeletionScheduledAt.HasValue)
+        {
+            // Case 2: Status was Approved and deletion is scheduled
+
+            var timeRemaining = request.DeletionScheduledAt.Value.Subtract(DateTime.UtcNow);
+
+            // Format time remaining for the admin email
+            string timeString;
+            if (timeRemaining.TotalHours >= 1)
+            {
+                timeString = $"approximately **{timeRemaining.TotalHours:F1} hours**";
+            }
+            else if (timeRemaining.TotalMinutes > 0)
+            {
+                timeString = $"approximately **{timeRemaining.TotalMinutes:F0} minutes**";
+            }
+            else
+            {
+                // Deletion time has already passed (handle immediately)
+                timeString = "IMMEDIATELY (Scheduled time has passed)";
+            }
+            await _emailService.SendCancellationRequestToAdminApprovedAsync(
+              "techthrivers@gmail.com",
+              user.FullName,
+              user.Email,
+              request.Id,
+              request.RequestDate,
+              request.DeletionScheduledAt,
+              timeString
+          );
+        }
+        else
+        {
+            return BadRequest("No Request can be generated at this moment.");
+        }
+        request.Status = "Cancellation Requested";
+        await _context.SaveChangesAsync();
+
+
+        return Ok(new { message = "Deletion cancellation request has been submitted to the administration." });
+    }
+
+    [HttpGet("deletion/requests")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> GetDeletionRequests()
+    {
+        var requests = await _context.UserDeletionRequests
+            .Include(r => r.User)
+            .Select(r => new
+            {
+                r.Id,
+                r.Status,
+                r.RequestDate,
+                r.DeletionScheduledAt,
+                user = new
+                {
+                    r.User.Id,
+                    r.User.FullName,
+                    r.User.Email
+                }
+            })
+            .OrderByDescending(r => r.RequestDate)
+            .ToListAsync();
+
+        return Ok(requests);
+    }
+
+
     [HttpGet("notifications")]
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult> GetNotifications()
@@ -232,5 +310,40 @@ public class AdminController : ControllerBase
         );
 
         return Ok(request);
+    }
+
+    [HttpPost("cancellation/approve/{requestId}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ApproveDeletionCancellation(int requestId)
+    {
+        var request = await _context.UserDeletionRequests
+            .Include(r => r.User)
+            .FirstOrDefaultAsync(r => r.Id == requestId);
+
+        if (request == null)
+        {
+            return NotFound("Deletion request not found.");
+        }
+
+       
+        if (request.Status != "Cancellation Requested")
+        {
+            return BadRequest($"Cannot cancel request with current status: {request.Status}.");
+        }
+        request.Status = "Canceled";
+        request.ApprovedDate = null;
+        request.DeletionScheduledAt = null;
+
+       
+        await _context.SaveChangesAsync();
+
+        // 5. Send confirmation email to the user
+        await _emailService.SendCancellationApprovedToUserAsync(
+            request.User.Email,
+            request.User.FullName,
+            request.Status
+        );
+
+        return Ok(new { message = $"Deletion request ID {requestId} successfully canceled. User account restored." });
     }
 }

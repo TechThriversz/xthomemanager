@@ -1,10 +1,13 @@
 ﻿// EmailService.cs
 using MailKit.Net.Smtp;
 using MailKit.Security;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Configuration;
 using MimeKit;
+using Org.BouncyCastle.Bcpg.OpenPgp;
 using System.IO;
 using System.Threading.Tasks;
+using XTHomeManager.API.Models;
 
 namespace XTHomeManager.API.Services
 {
@@ -19,7 +22,7 @@ namespace XTHomeManager.API.Services
         // === PUBLIC METHODS ===
         public async Task SendWelcomeEmailAsync(string toEmail, string name)
         {
-            var subject = "Welcome to XT Home Manager!";
+            var subject = "Welcome to XTHomeManager!";
             var htmlContent = await LoadTemplateAsync("WelcomeEmailTemplate.html", name);
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
@@ -63,7 +66,7 @@ namespace XTHomeManager.API.Services
                     Open Admin Panel
                 </a>
             </div>
-            <p style='color:#888;font-size:14px;text-align:center;margin-top:30px;'>© 2025 XT Home Manager</p>
+            <p style='color:#888;font-size:14px;text-align:center;margin-top:30px;'>© 2025 XTHomeManager</p>
         </div>";
 
             await SendEmailAsync(toEmail, subject, htmlContent);
@@ -86,7 +89,7 @@ namespace XTHomeManager.API.Services
             Review in Admin Panel
         </a>
     </div>
-    <p style='color:#888;font-size:14px;text-align:center;margin-top:30px;'>© 2025 XT Home Manager</p>
+    <p style='color:#888;font-size:14px;text-align:center;margin-top:30px;'>© 2025 XTHomeManager</p>
 </div>";
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
@@ -112,6 +115,101 @@ namespace XTHomeManager.API.Services
             Cancel Deletion
         </a>
     </div>
+</div>";
+            await SendEmailAsync(toEmail, subject, htmlContent);
+        }
+
+
+        //Cancellation Request
+        public async Task SendCancellationRequestToAdminPendingAsync(string toEmail, string fullName, string email, int requestId, DateTime requestDate)
+        {
+            var subject = $"URGENT: Account Deletion Cancellation for {fullName} (Pending)";
+            var htmlContent = $@"
+    <div style='max-width:600px;margin:auto;font-family:Arial,sans-serif;background:#f9f9f9;padding:30px;border-radius:12px;'>
+    <h1 style='color:#1A2A44;text-align:center;'>Account Deletion Cancellation Request</h1>
+    <div style='background:white;padding:20px;border-radius:8px;'>
+        <p><strong>User:</strong> {fullName}</p>
+        <p><strong>Email:</strong> {email}</p>
+        <p><strong>Request Id:</strong> {requestId}</p>
+        <p><strong>Requested:</strong> {requestDate:dddd, MMMM d, yyyy 'at' h:mm tt}</p>
+    </div>
+    <div style='text-align:center;margin-top:30px;'>
+        <a href='https://xthomemanager.vercel.app/admin/users' 
+           style='background:#1A2A44;color:white;padding:14px 32px;text-decoration:none;border-radius:50px;font-weight:bold;'>
+            Review in Admin Panel
+        </a>
+    </div>
+    <p style='color:#888;font-size:14px;text-align:center;margin-top:30px;'>© 2025 XTHomeManager</p>
+</div>";
+            await SendEmailAsync(toEmail, subject, htmlContent);
+        }
+
+        public async Task SendCancellationRequestToAdminApprovedAsync(string toEmail, string fullName, string email, int requestId, DateTime requestDate, DateTime? deletionScheduleAt, string timeLeft)
+        {
+            var subject = $"CRITICAL: Deletion Cancellation for {fullName} (Approved/Scheduled)";
+            var htmlContent = $@"
+<div style='max-width:600px;margin:auto;font-family:Arial,sans-serif;background:#f9f9f9;padding:30px;border-radius:12px;'>
+    <h1 style='color:#1A2A44;text-align:center;'>Account Deletion Request</h1>
+    <div style='background:white;padding:20px;border-radius:8px;'>
+        <p><strong>User:</strong> {fullName}</p>
+        <p><strong>Email:</strong> {email}</p>
+        <p><strong>Requested Id:</strong> {requestId}</p>
+<p>The deletion was <b>Approved</b> and is scheduled to happen in <b>{timeLeft}</b>.
+                <b>PLEASE HURRY TO RESOLVE THIS CANCELLATION REQUEST</b> before the scheduled deletion time.
+                Scheduled Deletion Time: {deletionScheduleAt:dddd, MMMM d, yyyy 'at' h:mm tt}</p>
+    </div>
+    <div style='text-align:center;margin-top:30px;'>
+        <a href='https://xthomemanager.vercel.app/admin/users' 
+           style='background:#1A2A44;color:white;padding:14px 32px;text-decoration:none;border-radius:50px;font-weight:bold;'>
+            Review in Admin Panel
+        </a>
+    </div>
+    <p style='color:#888;font-size:14px;text-align:center;margin-top:30px;'>© 2025 XTHomeManager</p>
+</div>";
+            await SendEmailAsync(toEmail, subject, htmlContent);
+        }
+
+        public async Task SendCancellationApprovedToUserAsync(string toEmail, string fullName, string status)
+        {
+            var subject = "Great News! Your Account Deletion Has Been Canceled 🎉";
+            var successColor = "#4CAF50"; 
+            var accentColor = "#1A2A44"; 
+
+            var htmlContent = $@"
+<div style='max-width:600px;margin:auto;font-family:Arial,sans-serif;background:#E8F5E9;padding:30px;border-radius:12px;border: 1px solid #C8E6C9;'>
+    <h1 style='color:{successColor};text-align:center;font-size:28px;margin-bottom:20px;line-height:1.2;'>
+        <span style='font-size:36px;margin-right:10px;'>✅</span> Account Restored!
+    </h1>
+    <div style='background:white;padding:25px;border-radius:8px;box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
+        <p style='color:{accentColor};font-size:16px;'>Hello <strong>{fullName}</strong>,</p>
+        
+        <p style='color:{accentColor};font-size:16px;line-height:1.5;'>
+            We are thrilled to let you know that your request to **cancel** the deletion of your account has been officially <strong>approved</strong> by our administration team.
+        </p>
+
+        <p style='font-size:18px;font-weight:bold;color:{accentColor};text-align:center;padding:15px;background-color:#F0FDF4;border-radius:5px;border: 1px solid #D1FAE5;'>
+            Congratulations! Your account is now fully retained and active.
+        </p>
+
+        <p style='color:{accentColor};font-size:16px;line-height:1.5;'>
+            Your data and access have been secured. You can log in and continue using all our services exactly where you left off.
+        </p>
+
+        <p style='color:{accentColor};font-size:16px;line-height:1.5;margin-top:20px;'>
+            We appreciate you choosing to stay with us!
+        </p>
+    </div>
+    <div style='text-align:center;margin-top:30px;'>
+        <a href='https://xthomemanager.vercel.app/dashboard' 
+            style='background:{successColor};color:white;padding:14px 32px;text-decoration:none;border-radius:50px;font-weight:bold;font-size:16px;display:inline-block;box-shadow: 0 4px 10px rgba(76, 175, 80, 0.4);'>
+            Access Your Account Now
+        </a>
+    </div>
+    <p style='text-align:center;font-size:12px;color:#999;margin-top:20px;'>
+        Thank you,
+        <br/>
+        The TechThrivers Team
+    </p>
 </div>";
             await SendEmailAsync(toEmail, subject, htmlContent);
         }
@@ -162,7 +260,7 @@ namespace XTHomeManager.API.Services
             "WelcomeEmailTemplate.html" => GetBeautifulWelcomeFallback(),
             "ResetPasswordEmailTemplate.html" => GetBeautifulResetFallback(),
             "RevokeEmailTemplate.html" => GetBeautifulRevokeFallback(),
-            _ => "<h2>Hello</h2><p>Welcome to XT Home Manager.</p>"
+            _ => "<h2>Hello</h2><p>Welcome to XTHomeManager.</p>"
         };
 
         private string GetFallbackInviteTemplate() => @"
@@ -200,7 +298,7 @@ namespace XTHomeManager.API.Services
         // === FALLBACK TEMPLATES (BEAUTIFUL) ===
         private string GetBeautifulWelcomeFallback() => @"
             <div style='max-width:600px;margin:auto;font-family:Arial,sans-serif;background:#f9f9f9;padding:30px;border-radius:12px;'>
-                <h1 style='color:#1A2A44;text-align:center;'>Welcome to XT Home Manager!</h1>
+                <h1 style='color:#1A2A44;text-align:center;'>Welcome to XTHomeManager!</h1>
                 <p style='font-size:16px;color:#555;'>Hello <strong>{{FullName}}</strong>,</p>
                 <p style='font-size:16px;color:#555;line-height:1.6;'>Your account is ready. Start tracking milk, rent, bills, and more — all in one beautiful place.</p>
                 <div style='text-align:center;margin:30px 0;'>
@@ -208,7 +306,7 @@ namespace XTHomeManager.API.Services
                         Open Dashboard
                     </a>
                 </div>
-                <p style='color:#888;font-size:14px;text-align:center;'>© 2025 XT Home Manager</p>
+                <p style='color:#888;font-size:14px;text-align:center;'>© 2025 XTHomeManager</p>
             </div>";
 
         private string GetBeautifulResetFallback() => @"
@@ -229,7 +327,7 @@ namespace XTHomeManager.API.Services
                 <h1 style='color:#1A2A44;text-align:center;'>Access Revoked</h1>
                 <p style='font-size:16px;color:#555;'>Hello <strong>{{FullName}}</strong>,</p>
                 <p style='font-size:16px;color:#555;line-height:1.6;'>Your access to <strong>{{record_name}}</strong> has been revoked by the owner.</p>
-                <p style='color:#888;font-size:14px;text-align:center;'>© 2025 XT Home Manager</p>
+                <p style='color:#888;font-size:14px;text-align:center;'>© 2025 XTHomeManager</p>
             </div>";
     }
 }

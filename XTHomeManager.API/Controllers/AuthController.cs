@@ -32,6 +32,7 @@ namespace XTHomeManager.API.Controllers
                 return BadRequest("Email and password are required.");
 
             var user = await _userService.GetUserByEmailAsync(model.Email);
+            if (user == null) return Unauthorized("User not found. If you had account please contact at techthrivers@gmail.com");
             if (user == null || !_userService.VerifyPassword(model.Password, user.PasswordHash))
             {
                 return Unauthorized("Invalid email or password");

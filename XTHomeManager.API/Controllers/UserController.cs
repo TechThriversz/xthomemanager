@@ -120,6 +120,10 @@ namespace XTHomeManager.API.Controllers
             var user = await _context.Users
                 .Include(u => u.ProUpgradeRequests)
                 .FirstOrDefaultAsync(u => u.Id == userId);
+            var activeRequest = await _context.UserDeletionRequests
+    .Where(r => r.UserId == userId)
+    .OrderByDescending(r => r.RequestDate) 
+    .FirstOrDefaultAsync();
 
             if (user == null) return NotFound();
 
@@ -141,7 +145,10 @@ namespace XTHomeManager.API.Controllers
                 user.CanUseMedicalRecords,
                 proUpgradeRequests = user.ProUpgradeRequests
                     .Select(r => new { r.Id, r.Status, r.RequestDate })
-                    .ToList()
+                    .ToList(),
+                deleteRequestPendingOrApproved = activeRequest?.Status,
+                deletionApprovedDate = activeRequest?.ApprovedDate,
+                deletionScheduledAt = activeRequest?.DeletionScheduledAt
             });
         }
     }
